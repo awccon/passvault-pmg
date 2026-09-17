@@ -48,8 +48,10 @@ authForm.addEventListener('submit', async (e) => {
       const salt = randomSaltB64Fn();
       const authProof = await deriveAuthProofFn(password, salt);
       await Api.register(username, salt, authProof);
+      await Api.login(username, authProof);
       encKey = await deriveEncKeyFn(password, salt);
-    } else {
+    }
+    else {
       const { salt } = await Api.getSalt(username);
       const authProof = await deriveAuthProofFn(password, salt);
       await Api.login(username, authProof);
