@@ -48,10 +48,9 @@ authForm.addEventListener('submit', async (e) => {
       const salt = randomSaltB64Fn();
       const authProof = await deriveAuthProofFn(password, salt);
       await Api.register(username, salt, authProof);
-      await Api.login(username, authProof);
+      await Api.login(username, authProof); // establish the server session
       encKey = await deriveEncKeyFn(password, salt);
-    }
-    else {
+    } else {
       const { salt } = await Api.getSalt(username);
       const authProof = await deriveAuthProofFn(password, salt);
       await Api.login(username, authProof);
@@ -230,6 +229,30 @@ function renderPasswordRow(entry, pw, pwIdx) {
     valueInput.type = valueInput.type === 'password' ? 'text' : 'password';
   });
 
+  const copyBtn = document.createElement('button');
+  copyBtn.className = 'icon-btn';
+  copyBtn.textContent = '📋';
+  copyBtn.title = 'Copy password';
+  copyBtn.addEventListener('click', async () => {
+    if (!pw.value) return;
+    try {
+      await navigator.clipboard.writeText(pw.value);
+    } catch (e) {
+      // Fallback for browsers/contexts without Clipboard API access
+      const tmp = document.createElement('textarea');
+      tmp.value = pw.value;
+      tmp.style.position = 'fixed';
+      tmp.style.opacity = '0';
+      document.body.appendChild(tmp);
+      tmp.select();
+      document.execCommand('copy');
+      document.body.removeChild(tmp);
+    }
+    const original = copyBtn.textContent;
+    copyBtn.textContent = '✅';
+    setTimeout(() => { copyBtn.textContent = original; }, 1200);
+  });
+
   const removeBtn = document.createElement('button');
   removeBtn.className = 'icon-btn danger';
   removeBtn.textContent = '✕';
@@ -243,6 +266,7 @@ function renderPasswordRow(entry, pw, pwIdx) {
   row.appendChild(labelInput);
   row.appendChild(valueInput);
   row.appendChild(toggleBtn);
+  row.appendChild(copyBtn);
   row.appendChild(removeBtn);
   return row;
 }
