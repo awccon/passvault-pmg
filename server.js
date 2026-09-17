@@ -83,6 +83,16 @@ function timingSafeEqualStr(a, b) {
   return crypto.timingSafeEqual(bufA, bufB);
 }
 
+// Whoever is logged in as this username gets the admin tab. Unset =
+// no admin portal for anyone. Not a secret in the same sense as the
+// others above — it's a username, not a password — but still only
+// set it to an account only you control.
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME || null;
+
+function isAdminUsername(username) {
+  return !!ADMIN_USERNAME && !!username && username.toLowerCase() === ADMIN_USERNAME.toLowerCase();
+}
+
 app.use(session({
   secret: SESSION_SECRET,
   resave: false,
@@ -103,6 +113,23 @@ app.use(express.static(path.join(__dirname, 'public')));
 function requireAuth(req, res, next) {
   if (!req.session || !req.session.userId) {
     return res.status(401).json({ error: 'Not logged in' });
+  }
+  // A session can outlive the account it belongs to (e.g. an admin
+  // deleted the user) — check the account still exists on every request.
+  const users = readJSON(USERS_FILE);
+  if (!users.some(u => u.id === req.session.userId)) {
+    req.session.destroy(() => {});
+    return res.status(401).json({ error: 'Not logged in' });
+  }
+  next();
+}
+
+function requireAdmin(req, res, next) {
+  if (!req.session || !req.session.userId) {
+    return res.status(401).json({ error: 'Not logged in' });
+  }
+  if (!isAdminUsername(req.session.username)) {
+    return res.status(403).json({ error: 'Admin access required' });
   }
   next();
 }
@@ -198,7 +225,7 @@ app.post('/api/login', loginLimiter, async (req, res) => {
     if (!user || !ok) return res.status(401).json({ error: 'Invalid username or master password' });
     req.session.userId = user.id;
     req.session.username = user.username;
-    res.json({ ok: true, username: user.username });
+    res.json({ ok: true, username: user.username, isAdmin: isAdminUsername(user.username) });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Server error' });
@@ -211,7 +238,7 @@ app.post('/api/logout', (req, res) => {
 
 app.get('/api/me', (req, res) => {
   if (req.session && req.session.userId) {
-    return res.json({ loggedIn: true, username: req.session.username });
+    return res.json({ loggedIn: true, username: req.session.username, isAdmin: isAdminUsername(req.session.username) });
   }
   res.json({ loggedIn: false });
 });
@@ -263,6 +290,43 @@ app.post('/api/messages', requireAuth, chatLimiter, (req, res) => {
   if (messages.length > MAX_MESSAGES) messages.splice(0, messages.length - MAX_MESSAGES);
   writeJSON(MESSAGES_FILE, messages);
   res.json({ ok: true, message });
+});
+
+// --- Admin ---
+app.get('/api/admin/users', requireAdmin, (req, res) => {
+  const users = readJSON(USERS_FILE);
+  const vaults = readJSON(VAULTS_FILE);
+  const messages = readJSON(MESSAGES_FILE);
+  const list = users.map(u => {
+    const v = vaults.find(v => v.userId === u.id);
+    return {
+      id: u.id,
+      username: u.username,
+      createdAt: u.createdAt,
+      hasVaultData: !!(v && v.blob),
+      vaultUpdatedAt: v ? v.updatedAt : null
+    };
+  });
+  res.json({ users: list, messageCount: messages.length });
+});
+
+app.delete('/api/admin/users/:id', requireAdmin, (req, res) => {
+  const { id } = req.params;
+  const users = readJSON(USERS_FILE);
+  const target = users.find(u => u.id === id);
+  if (!target) return res.status(404).json({ error: 'User not found' });
+  if (isAdminUsername(target.username)) {
+    return res.status(400).json({ error: "You can't delete the admin account" });
+  }
+  writeJSON(USERS_FILE, users.filter(u => u.id !== id));
+  const vaults = readJSON(VAULTS_FILE);
+  writeJSON(VAULTS_FILE, vaults.filter(v => v.userId !== id));
+  res.json({ ok: true });
+});
+
+app.delete('/api/admin/messages', requireAdmin, (req, res) => {
+  writeJSON(MESSAGES_FILE, []);
+  res.json({ ok: true });
 });
 
 const PORT = process.env.PORT || 3000;

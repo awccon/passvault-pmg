@@ -61,6 +61,24 @@ const Api = {
     const data = await r.json();
     if (!r.ok) throw new Error(data.error || 'Failed to send message');
     return data;
+  },
+  async getAdminUsers() {
+    const r = await fetch('/api/admin/users');
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || 'Failed to load admin data');
+    return data;
+  },
+  async deleteAdminUser(id) {
+    const r = await fetch('/api/admin/users/' + encodeURIComponent(id), { method: 'DELETE' });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || 'Failed to delete user');
+    return data;
+  },
+  async clearChatHistory() {
+    const r = await fetch('/api/admin/messages', { method: 'DELETE' });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || 'Failed to clear chat history');
+    return data;
   }
 };
 window.Api = Api;

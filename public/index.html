@@ -49,6 +49,7 @@
     <button id="tab-vault" class="tab-btn active" role="tab" aria-selected="true" aria-controls="vault-panel" type="button">🔑 Vault</button>
     <button id="tab-budget" class="tab-btn" role="tab" aria-selected="false" aria-controls="budget-panel" type="button">💰 Budget</button>
     <button id="tab-chat" class="tab-btn" role="tab" aria-selected="false" aria-controls="chat-panel" type="button">💬 Chat</button>
+    <button id="tab-admin" class="tab-btn hidden" role="tab" aria-selected="false" aria-controls="admin-panel" type="button">🛠 Admin</button>
   </nav>
 
   <main class="content">
@@ -113,6 +114,23 @@
         <input id="chat-input" type="text" maxlength="2000" autocomplete="off" placeholder="Type a message…" required>
         <button type="submit" class="primary-btn chat-send">Send</button>
       </form>
+    </section>
+
+    <section id="admin-panel" class="panel hidden" role="tabpanel" aria-labelledby="tab-admin">
+      <p class="hint">Only visible to the server's designated admin account. Actions here affect other people's accounts and data — think before you click.</p>
+
+      <div class="admin-section">
+        <div class="admin-section-header">
+          <h2 class="sub-title">Chat history</h2>
+          <span id="admin-message-count" class="admin-count"></span>
+        </div>
+        <button id="clear-chat-btn" class="secondary-btn danger-btn" type="button">Clear all chat history</button>
+      </div>
+
+      <div class="admin-section">
+        <h2 class="sub-title">Registered users</h2>
+        <div id="admin-users" class="admin-users-list"></div>
+      </div>
     </section>
   </main>
 </div>

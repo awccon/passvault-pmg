@@ -38,9 +38,14 @@ const logoutBtn = document.getElementById('logout');
 const tabVaultBtn = document.getElementById('tab-vault');
 const tabBudgetBtn = document.getElementById('tab-budget');
 const tabChatBtn = document.getElementById('tab-chat');
+const tabAdminBtn = document.getElementById('tab-admin');
 const vaultPanel = document.getElementById('vault-panel');
 const budgetPanel = document.getElementById('budget-panel');
 const chatPanel = document.getElementById('chat-panel');
+const adminPanel = document.getElementById('admin-panel');
+const adminUsersEl = document.getElementById('admin-users');
+const adminMessageCountEl = document.getElementById('admin-message-count');
+const clearChatBtn = document.getElementById('clear-chat-btn');
 const addExpenseBtn = document.getElementById('add-expense');
 const expensesEl = document.getElementById('expenses');
 const budgetTotalEl = document.getElementById('budget-total');
@@ -62,6 +67,8 @@ let chatMessages = [];
 let lastMessageTime = null;
 let chatLoaded = false;
 let chatPollTimer = null;
+
+let isAdmin = false;
 
 // Shared by the standalone generator panel and each row's quick-generate
 // button, so both honor whatever length/character settings were last set.
@@ -160,12 +167,14 @@ authForm.addEventListener('submit', async (e) => {
       const salt = randomSaltB64Fn();
       const authProof = await deriveAuthProofFn(password, salt);
       await Api.register(username, salt, authProof, inviteCode);
-      await Api.login(username, authProof); // establish the server session
+      const loginResult = await Api.login(username, authProof); // establish the server session
+      isAdmin = !!loginResult.isAdmin;
       encKey = await deriveEncKeyFn(password, salt);
     } else {
       const { salt } = await Api.getSalt(username);
       const authProof = await deriveAuthProofFn(password, salt);
-      await Api.login(username, authProof);
+      const loginResult = await Api.login(username, authProof);
+      isAdmin = !!loginResult.isAdmin;
       encKey = await deriveEncKeyFn(password, salt);
     }
     passwordInput.value = '';
@@ -181,12 +190,15 @@ function switchTab(tab) {
   vaultPanel.classList.toggle('hidden', tab !== 'vault');
   budgetPanel.classList.toggle('hidden', tab !== 'budget');
   chatPanel.classList.toggle('hidden', tab !== 'chat');
+  adminPanel.classList.toggle('hidden', tab !== 'admin');
   tabVaultBtn.classList.toggle('active', tab === 'vault');
   tabBudgetBtn.classList.toggle('active', tab === 'budget');
   tabChatBtn.classList.toggle('active', tab === 'chat');
+  tabAdminBtn.classList.toggle('active', tab === 'admin');
   tabVaultBtn.setAttribute('aria-selected', String(tab === 'vault'));
   tabBudgetBtn.setAttribute('aria-selected', String(tab === 'budget'));
   tabChatBtn.setAttribute('aria-selected', String(tab === 'chat'));
+  tabAdminBtn.setAttribute('aria-selected', String(tab === 'admin'));
 
   if (tab === 'chat') {
     if (!chatLoaded) loadChatHistory();
@@ -194,10 +206,12 @@ function switchTab(tab) {
   } else {
     stopChatPolling();
   }
+  if (tab === 'admin') loadAdminData();
 }
 tabVaultBtn.addEventListener('click', () => switchTab('vault'));
 tabBudgetBtn.addEventListener('click', () => switchTab('budget'));
 tabChatBtn.addEventListener('click', () => switchTab('chat'));
+tabAdminBtn.addEventListener('click', () => switchTab('admin'));
 
 logoutBtn.addEventListener('click', async () => {
   clearTimeout(saveTimer);
@@ -210,6 +224,8 @@ logoutBtn.addEventListener('click', async () => {
   lastMessageTime = null;
   chatLoaded = false;
   chatMessagesEl.innerHTML = '';
+  isAdmin = false;
+  tabAdminBtn.classList.add('hidden');
   vaultView.classList.add('hidden');
   authView.classList.remove('hidden');
   authForm.reset();
@@ -232,6 +248,7 @@ async function enterVault(username) {
   if (!vault.entries) vault.entries = [];
   if (!vault.budget) vault.budget = { expenses: [] };
   if (!vault.budget.expenses) vault.budget.expenses = [];
+  tabAdminBtn.classList.toggle('hidden', !isAdmin);
   authView.classList.add('hidden');
   vaultView.classList.remove('hidden');
   switchTab('vault');
@@ -760,6 +777,88 @@ chatForm.addEventListener('submit', async (e) => {
   } finally {
     chatInput.disabled = false;
     chatInput.focus();
+  }
+});
+
+// --- Admin (only reachable at all if the server granted isAdmin) ---
+
+async function loadAdminData() {
+  try {
+    const { users, messageCount } = await Api.getAdminUsers();
+    renderAdminUsers(users);
+    adminMessageCountEl.textContent = messageCount + (messageCount === 1 ? ' message' : ' messages');
+  } catch (err) {
+    announce(err.message || 'Failed to load admin data.');
+  }
+}
+
+function renderAdminUsers(users) {
+  adminUsersEl.innerHTML = '';
+  if (users.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'admin-empty';
+    empty.textContent = 'No registered users.';
+    adminUsersEl.appendChild(empty);
+    return;
+  }
+  users.forEach(u => adminUsersEl.appendChild(renderAdminUserRow(u)));
+}
+
+function renderAdminUserRow(u) {
+  const row = document.createElement('div');
+  row.className = 'admin-user-row';
+
+  const info = document.createElement('div');
+  info.className = 'admin-user-info';
+  const nameEl = document.createElement('span');
+  nameEl.className = 'admin-username';
+  nameEl.textContent = u.username;
+  const metaEl = document.createElement('span');
+  metaEl.className = 'admin-user-meta';
+  const joined = new Date(u.createdAt).toLocaleDateString();
+  metaEl.textContent = 'Joined ' + joined + (u.hasVaultData ? '' : ' · no vault data yet');
+  info.appendChild(nameEl);
+  info.appendChild(metaEl);
+  row.appendChild(info);
+
+  const isSelf = u.username.toLowerCase() === currentUserEl.textContent.toLowerCase();
+  if (isSelf) {
+    const badge = document.createElement('span');
+    badge.className = 'admin-you-badge';
+    badge.textContent = 'You (admin)';
+    row.appendChild(badge);
+  } else {
+    const delBtn = document.createElement('button');
+    delBtn.className = 'icon-btn danger';
+    delBtn.textContent = '✕';
+    delBtn.title = 'Delete this user';
+    delBtn.setAttribute('aria-label', 'Delete user ' + u.username);
+    delBtn.addEventListener('click', async () => {
+      if (!confirm('Permanently delete the account "' + u.username + '" and their vault? This cannot be undone.')) return;
+      try {
+        await Api.deleteAdminUser(u.id);
+        announce('Deleted user ' + u.username + '.');
+        loadAdminData();
+      } catch (err) {
+        announce(err.message || 'Failed to delete user.');
+      }
+    });
+    row.appendChild(delBtn);
+  }
+  return row;
+}
+
+clearChatBtn.addEventListener('click', async () => {
+  if (!confirm('Clear all chat history for everyone? This cannot be undone.')) return;
+  try {
+    await Api.clearChatHistory();
+    chatMessages = [];
+    lastMessageTime = null;
+    renderFullChatHistory();
+    announce('Chat history cleared.');
+    loadAdminData();
+  } catch (err) {
+    announce(err.message || 'Failed to clear chat history.');
   }
 });
 
