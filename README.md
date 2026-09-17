@@ -29,7 +29,11 @@ and decrypted in your browser.
 ## Running it locally
 
 Requires Node.js 18+.
+<<<<<<< HEAD
 .
+=======
+
+>>>>>>> 1201da7640f04a119d3acb26e174fde42f05ab09
 ```bash
 cd passvault
 npm install
@@ -177,4 +181,8 @@ your encrypted vault.
 - Single flat vault per user (not encrypted field-by-field) — simpler,
   but means the whole vault decrypts/encrypts together.
 - No rate limiting on login attempts — worth adding
+<<<<<<< HEAD
   (e.g. `express-rate-limit`) if you expose this beyond your home network.
+=======
+  (e.g. `express-rate-limit`) if you expose this beyond your home network.
+>>>>>>> 1201da7640f04a119d3acb26e174fde42f05ab09
