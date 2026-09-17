@@ -8,6 +8,11 @@
 //
 // If someone steals data/users.json and data/vaults.json, they get
 // nothing usable without your master password.
+//
+// The one exception is the shared chat below: unlike the vault, chat
+// messages are stored in plain text (same trust model as any ordinary
+// self-hosted chat tool) since they need to be readable by every user,
+// not just the one who wrote them.
 
 const express = require('express');
 const session = require('express-session');
@@ -21,10 +26,15 @@ const crypto = require('crypto');
 const DATA_DIR = path.join(__dirname, 'data');
 const USERS_FILE = path.join(DATA_DIR, 'users.json');
 const VAULTS_FILE = path.join(DATA_DIR, 'vaults.json');
+const MESSAGES_FILE = path.join(DATA_DIR, 'messages.json');
 
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 if (!fs.existsSync(USERS_FILE)) fs.writeFileSync(USERS_FILE, '[]');
 if (!fs.existsSync(VAULTS_FILE)) fs.writeFileSync(VAULTS_FILE, '[]');
+if (!fs.existsSync(MESSAGES_FILE)) fs.writeFileSync(MESSAGES_FILE, '[]');
+
+const MAX_MESSAGES = 500;
+const MAX_MESSAGE_LENGTH = 2000;
 
 function readJSON(file) {
   return JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -78,6 +88,15 @@ const loginLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many attempts. Please try again later.' }
+});
+
+// Keep a buggy client (or a spammy user) from flooding the shared chat.
+const chatLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Sending too many messages. Slow down a bit.' }
 });
 
 // --- Registration ---
@@ -182,6 +201,36 @@ app.put('/api/vault', requireAuth, (req, res) => {
   if (idx === -1) vaults.push(entry); else vaults[idx] = entry;
   writeJSON(VAULTS_FILE, vaults);
   res.json({ ok: true });
+});
+
+// --- Chat (shared, plain text — see note at the top of this file) ---
+app.get('/api/messages', requireAuth, (req, res) => {
+  const messages = readJSON(MESSAGES_FILE);
+  const since = req.query.since;
+  const result = since ? messages.filter(m => m.createdAt > since) : messages;
+  res.json({ messages: result });
+});
+
+app.post('/api/messages', requireAuth, chatLimiter, (req, res) => {
+  const { text } = req.body || {};
+  if (typeof text !== 'string' || !text.trim()) {
+    return res.status(400).json({ error: 'Message cannot be empty' });
+  }
+  if (text.length > MAX_MESSAGE_LENGTH) {
+    return res.status(400).json({ error: `Message too long (max ${MAX_MESSAGE_LENGTH} characters)` });
+  }
+  const messages = readJSON(MESSAGES_FILE);
+  const message = {
+    id: crypto.randomUUID(),
+    userId: req.session.userId,
+    username: req.session.username,
+    text: text.trim(),
+    createdAt: new Date().toISOString()
+  };
+  messages.push(message);
+  if (messages.length > MAX_MESSAGES) messages.splice(0, messages.length - MAX_MESSAGES);
+  writeJSON(MESSAGES_FILE, messages);
+  res.json({ ok: true, message });
 });
 
 const PORT = process.env.PORT || 3000;

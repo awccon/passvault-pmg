@@ -2,8 +2,10 @@
 
 A personal password manager you run yourself. Supports multiple separate
 user accounts. Built so that **the server never sees your master
-password and never sees your decrypted data** — everything is encrypted
-and decrypted in your browser.
+password and never sees your decrypted vault data** — everything in
+your vault is encrypted and decrypted in your browser. (The one
+exception is the shared **Chat** tab, which is plain text by design —
+see [Using the app](#using-the-app).)
 
 ## How the security works (read this once)
 
@@ -168,10 +170,21 @@ your encrypted vault.
     add as many as you like.
 - Changes autosave about a second after you stop typing (see the
   "Saving…" indicator at the top right).
+- The **Budget** tab lets you track expenses (date, category,
+  description, amount), same as everything else it's encrypted in
+  your browser before it's saved. It shows a running total and a
+  breakdown by category.
+- The **Chat** tab is a shared space visible to every registered user
+  on this server — think of it as a simple built-in group chat.
+  Unlike the vault and budget, chat messages are stored in **plain
+  text** on the server (same trust model as any ordinary self-hosted
+  chat app), since they need to be readable by everyone, not just the
+  person who wrote them. Don't put anything there you wouldn't want
+  the server operator to read.
 
 ## Limitations / things to consider adding later
 
-- No password strength meter or generator (can be added).
+- No password generator (can be added).
 - No import/export yet — could add an encrypted export/import feature.
 - No account recovery / multi-device master password rotation flow.
 - Single flat vault per user (not encrypted field-by-field) — simpler,

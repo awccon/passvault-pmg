@@ -6,7 +6,7 @@ const decryptVaultFn = PVCrypto.decryptVault;
 const randomSaltB64Fn = PVCrypto.randomSaltB64;
 
 let encKey = null;       // lives only in memory, cleared on logout/refresh
-let vault = { entries: [] };
+let vault = { entries: [], budget: { expenses: [] } };
 let saveTimer = null;
 let dirty = false;
 
@@ -20,6 +20,19 @@ const modeToggle = document.getElementById('mode-toggle');
 const entriesEl = document.getElementById('entries');
 const addEntryBtn = document.getElementById('add-entry');
 const logoutBtn = document.getElementById('logout');
+const tabVaultBtn = document.getElementById('tab-vault');
+const tabBudgetBtn = document.getElementById('tab-budget');
+const tabChatBtn = document.getElementById('tab-chat');
+const vaultPanel = document.getElementById('vault-panel');
+const budgetPanel = document.getElementById('budget-panel');
+const chatPanel = document.getElementById('chat-panel');
+const addExpenseBtn = document.getElementById('add-expense');
+const expensesEl = document.getElementById('expenses');
+const budgetTotalEl = document.getElementById('budget-total');
+const budgetBreakdownEl = document.getElementById('budget-breakdown');
+const chatMessagesEl = document.getElementById('chat-messages');
+const chatForm = document.getElementById('chat-form');
+const chatInput = document.getElementById('chat-input');
 const currentUserEl = document.getElementById('current-user');
 const saveStatusEl = document.getElementById('save-status');
 const srStatusEl = document.getElementById('sr-status');
@@ -29,6 +42,11 @@ const pwStrengthFill = document.getElementById('pw-strength-fill');
 const pwStrengthLabel = document.getElementById('pw-strength-label');
 
 let mode = 'login'; // or 'register'
+
+let chatMessages = [];
+let lastMessageTime = null;
+let chatLoaded = false;
+let chatPollTimer = null;
 
 modeToggle.addEventListener('click', () => {
   mode = mode === 'login' ? 'register' : 'login';
@@ -94,12 +112,39 @@ authForm.addEventListener('submit', async (e) => {
   }
 });
 
+function switchTab(tab) {
+  vaultPanel.classList.toggle('hidden', tab !== 'vault');
+  budgetPanel.classList.toggle('hidden', tab !== 'budget');
+  chatPanel.classList.toggle('hidden', tab !== 'chat');
+  tabVaultBtn.classList.toggle('active', tab === 'vault');
+  tabBudgetBtn.classList.toggle('active', tab === 'budget');
+  tabChatBtn.classList.toggle('active', tab === 'chat');
+  tabVaultBtn.setAttribute('aria-selected', String(tab === 'vault'));
+  tabBudgetBtn.setAttribute('aria-selected', String(tab === 'budget'));
+  tabChatBtn.setAttribute('aria-selected', String(tab === 'chat'));
+
+  if (tab === 'chat') {
+    if (!chatLoaded) loadChatHistory();
+    startChatPolling();
+  } else {
+    stopChatPolling();
+  }
+}
+tabVaultBtn.addEventListener('click', () => switchTab('vault'));
+tabBudgetBtn.addEventListener('click', () => switchTab('budget'));
+tabChatBtn.addEventListener('click', () => switchTab('chat'));
+
 logoutBtn.addEventListener('click', async () => {
   clearTimeout(saveTimer);
   if (dirty) await saveVaultNow(); // flush any pending debounced save first
   await Api.logout();
   encKey = null;
-  vault = { entries: [] };
+  vault = { entries: [], budget: { expenses: [] } };
+  stopChatPolling();
+  chatMessages = [];
+  lastMessageTime = null;
+  chatLoaded = false;
+  chatMessagesEl.innerHTML = '';
   vaultView.classList.add('hidden');
   authView.classList.remove('hidden');
   authForm.reset();
@@ -120,9 +165,13 @@ async function enterVault(username) {
     vault = { entries: [] };
   }
   if (!vault.entries) vault.entries = [];
+  if (!vault.budget) vault.budget = { expenses: [] };
+  if (!vault.budget.expenses) vault.budget.expenses = [];
   authView.classList.add('hidden');
   vaultView.classList.remove('hidden');
+  switchTab('vault');
   renderEntries();
+  renderExpenses();
 }
 
 function newEntry() {
@@ -380,6 +429,249 @@ addEntryBtn.addEventListener('click', () => {
   vault.entries.unshift(newEntry());
   markDirty();
   renderEntries();
+});
+
+// --- Budget ---
+
+function newExpense() {
+  return {
+    id: crypto.randomUUID(),
+    date: new Date().toISOString().slice(0, 10),
+    category: '',
+    description: '',
+    amount: 0
+  };
+}
+
+function renderExpenses() {
+  expensesEl.innerHTML = '';
+  const expenses = vault.budget.expenses;
+  if (expenses.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'expenses-empty';
+    empty.textContent = 'No expenses yet. Click "+ Add expense" to start tracking.';
+    expensesEl.appendChild(empty);
+  } else {
+    expenses.forEach((expense, idx) => {
+      expensesEl.appendChild(renderExpenseRow(expense, idx));
+    });
+  }
+  renderBudgetSummary();
+}
+
+function renderBudgetSummary() {
+  const expenses = vault.budget.expenses;
+  const total = expenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+  budgetTotalEl.textContent = total.toFixed(2);
+
+  const byCategory = new Map();
+  expenses.forEach(e => {
+    const key = (e.category || '').trim() || 'Uncategorized';
+    byCategory.set(key, (byCategory.get(key) || 0) + (Number(e.amount) || 0));
+  });
+
+  budgetBreakdownEl.innerHTML = '';
+  if (byCategory.size === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'breakdown-empty';
+    empty.textContent = 'Nothing to break down yet.';
+    budgetBreakdownEl.appendChild(empty);
+    return;
+  }
+  [...byCategory.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .forEach(([category, amount]) => {
+      const row = document.createElement('div');
+      row.className = 'breakdown-row';
+      const catEl = document.createElement('span');
+      catEl.className = 'category';
+      catEl.textContent = category;
+      const amtEl = document.createElement('span');
+      amtEl.className = 'amount';
+      amtEl.textContent = amount.toFixed(2);
+      row.appendChild(catEl);
+      row.appendChild(amtEl);
+      budgetBreakdownEl.appendChild(row);
+    });
+}
+
+function renderExpenseRow(expense, idx) {
+  const row = document.createElement('div');
+  row.className = 'expense-row';
+
+  const dateInput = document.createElement('input');
+  dateInput.type = 'date';
+  dateInput.className = 'expense-date';
+  dateInput.setAttribute('aria-label', 'Expense date');
+  dateInput.value = expense.date || '';
+  dateInput.addEventListener('input', () => { expense.date = dateInput.value; markDirty(); });
+
+  const categoryInput = document.createElement('input');
+  categoryInput.type = 'text';
+  categoryInput.className = 'expense-category';
+  categoryInput.placeholder = 'Category';
+  categoryInput.setAttribute('aria-label', 'Expense category');
+  categoryInput.autocomplete = 'off';
+  categoryInput.value = expense.category || '';
+  categoryInput.addEventListener('input', () => {
+    expense.category = categoryInput.value;
+    markDirty();
+    renderBudgetSummary();
+  });
+
+  const descInput = document.createElement('input');
+  descInput.type = 'text';
+  descInput.className = 'expense-description';
+  descInput.placeholder = 'Description';
+  descInput.setAttribute('aria-label', 'Expense description');
+  descInput.autocomplete = 'off';
+  descInput.value = expense.description || '';
+  descInput.addEventListener('input', () => { expense.description = descInput.value; markDirty(); });
+
+  const amountInput = document.createElement('input');
+  amountInput.type = 'number';
+  amountInput.className = 'expense-amount';
+  amountInput.placeholder = '0.00';
+  amountInput.step = '0.01';
+  amountInput.min = '0';
+  amountInput.setAttribute('aria-label', 'Expense amount');
+  amountInput.autocomplete = 'off';
+  amountInput.value = expense.amount === 0 ? '' : expense.amount;
+  amountInput.addEventListener('input', () => {
+    expense.amount = parseFloat(amountInput.value) || 0;
+    markDirty();
+    renderBudgetSummary();
+  });
+
+  const removeBtn = document.createElement('button');
+  removeBtn.className = 'icon-btn danger';
+  removeBtn.textContent = '✕';
+  removeBtn.title = 'Remove this expense';
+  removeBtn.setAttribute('aria-label', 'Remove expense' + (expense.description ? ': ' + expense.description : ' ' + (idx + 1)));
+  removeBtn.addEventListener('click', () => {
+    vault.budget.expenses.splice(idx, 1);
+    markDirty();
+    renderExpenses();
+  });
+
+  row.appendChild(dateInput);
+  row.appendChild(categoryInput);
+  row.appendChild(descInput);
+  row.appendChild(amountInput);
+  row.appendChild(removeBtn);
+  return row;
+}
+
+addExpenseBtn.addEventListener('click', () => {
+  vault.budget.expenses.unshift(newExpense());
+  markDirty();
+  renderExpenses();
+});
+
+// --- Chat (shared, plain text — not part of the encrypted vault) ---
+
+function formatChatTime(iso) {
+  const d = new Date(iso);
+  return d.toLocaleString(undefined, { hour: '2-digit', minute: '2-digit', month: 'short', day: 'numeric' });
+}
+
+function renderChatMessage(m) {
+  const div = document.createElement('div');
+  div.className = 'chat-message' + (m.username === currentUserEl.textContent ? ' own' : '');
+  const meta = document.createElement('div');
+  meta.className = 'chat-meta';
+  const userEl = document.createElement('span');
+  userEl.className = 'chat-username';
+  userEl.textContent = m.username;
+  const timeEl = document.createElement('span');
+  timeEl.className = 'chat-time';
+  timeEl.textContent = formatChatTime(m.createdAt);
+  meta.appendChild(userEl);
+  meta.appendChild(timeEl);
+  const textEl = document.createElement('div');
+  textEl.className = 'chat-text';
+  textEl.textContent = m.text;
+  div.appendChild(meta);
+  div.appendChild(textEl);
+  return div;
+}
+
+function renderFullChatHistory() {
+  chatMessagesEl.innerHTML = '';
+  if (chatMessages.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'chat-empty';
+    empty.textContent = 'No messages yet — say hello!';
+    chatMessagesEl.appendChild(empty);
+  } else {
+    chatMessages.forEach(m => chatMessagesEl.appendChild(renderChatMessage(m)));
+  }
+  chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
+}
+
+function appendChatMessages(newMessages) {
+  const emptyEl = chatMessagesEl.querySelector('.chat-empty');
+  if (emptyEl) emptyEl.remove();
+  newMessages.forEach(m => chatMessagesEl.appendChild(renderChatMessage(m)));
+  chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
+}
+
+async function loadChatHistory() {
+  // Load history with the live region off so a screen reader doesn't
+  // announce the whole backlog at once; switch it on for later arrivals.
+  chatMessagesEl.setAttribute('aria-live', 'off');
+  try {
+    const { messages } = await Api.getMessages();
+    chatMessages = messages;
+    renderFullChatHistory();
+    if (messages.length) lastMessageTime = messages[messages.length - 1].createdAt;
+  } catch (e) {
+    // Leave the panel empty; the next poll will retry.
+  }
+  chatMessagesEl.setAttribute('aria-live', 'polite');
+  chatLoaded = true;
+}
+
+async function pollNewMessages() {
+  try {
+    const { messages } = await Api.getMessages(lastMessageTime);
+    if (messages.length) {
+      chatMessages = chatMessages.concat(messages);
+      lastMessageTime = messages[messages.length - 1].createdAt;
+      appendChatMessages(messages);
+    }
+  } catch (e) {
+    // Silent — will retry on the next poll tick.
+  }
+}
+
+function startChatPolling() {
+  stopChatPolling();
+  chatPollTimer = setInterval(pollNewMessages, 4000);
+}
+
+function stopChatPolling() {
+  clearInterval(chatPollTimer);
+  chatPollTimer = null;
+}
+
+chatForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const text = chatInput.value.trim();
+  if (!text) return;
+  chatInput.disabled = true;
+  try {
+    const { message } = await Api.sendMessage(text);
+    chatMessages.push(message);
+    lastMessageTime = message.createdAt;
+    appendChatMessages([message]);
+    chatInput.value = '';
+  } catch (err) {
+    announce(err.message || 'Failed to send message');
+  } finally {
+    chatInput.disabled = false;
+    chatInput.focus();
+  }
 });
 
 function markDirty() {

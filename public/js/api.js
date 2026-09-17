@@ -45,6 +45,22 @@ const Api = {
     const data = await r.json();
     if (!r.ok) throw new Error(data.error || 'Save failed');
     return data;
+  },
+  async getMessages(since) {
+    const url = '/api/messages' + (since ? ('?since=' + encodeURIComponent(since)) : '');
+    const r = await fetch(url);
+    if (!r.ok) throw new Error('Could not load messages');
+    return r.json();
+  },
+  async sendMessage(text) {
+    const r = await fetch('/api/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text })
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || 'Failed to send message');
+    return data;
   }
 };
 window.Api = Api;

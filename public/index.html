@@ -40,11 +40,48 @@
     </div>
   </header>
 
+  <nav class="tabbar" role="tablist" aria-label="Sections">
+    <button id="tab-vault" class="tab-btn active" role="tab" aria-selected="true" aria-controls="vault-panel" type="button">🔑 Vault</button>
+    <button id="tab-budget" class="tab-btn" role="tab" aria-selected="false" aria-controls="budget-panel" type="button">💰 Budget</button>
+    <button id="tab-chat" class="tab-btn" role="tab" aria-selected="false" aria-controls="chat-panel" type="button">💬 Chat</button>
+  </nav>
+
   <main class="content">
-    <div class="content-toolbar">
-      <button id="add-entry" class="primary-btn">+ Add email address</button>
-    </div>
-    <div id="entries"></div>
+    <section id="vault-panel" class="panel" role="tabpanel" aria-labelledby="tab-vault">
+      <div class="content-toolbar">
+        <button id="add-entry" class="primary-btn">+ Add email address</button>
+      </div>
+      <div id="entries"></div>
+    </section>
+
+    <section id="budget-panel" class="panel hidden" role="tabpanel" aria-labelledby="tab-budget">
+      <div class="content-toolbar">
+        <button id="add-expense" class="primary-btn">+ Add expense</button>
+      </div>
+
+      <div class="budget-summary">
+        <div class="summary-card">
+          <span class="summary-label">Total spent</span>
+          <span id="budget-total" class="summary-value">0.00</span>
+        </div>
+        <div class="summary-card summary-breakdown">
+          <span class="summary-label">By category</span>
+          <div id="budget-breakdown" class="breakdown-list"></div>
+        </div>
+      </div>
+
+      <div id="expenses" class="expenses-list"></div>
+    </section>
+
+    <section id="chat-panel" class="panel hidden" role="tabpanel" aria-labelledby="tab-chat">
+      <p class="hint">This is a shared space — every registered user on this server can read and post here. Unlike the vault, chat messages are stored in plain text, not encrypted.</p>
+      <div id="chat-messages" class="chat-messages" role="log" aria-live="off" aria-relevant="additions"></div>
+      <form id="chat-form" class="chat-form">
+        <label for="chat-input" class="sr-only">Message</label>
+        <input id="chat-input" type="text" maxlength="2000" autocomplete="off" placeholder="Type a message…" required>
+        <button type="submit" class="primary-btn chat-send">Send</button>
+      </form>
+    </section>
   </main>
 </div>
 
