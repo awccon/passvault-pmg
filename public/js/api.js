@@ -4,11 +4,11 @@ const Api = {
     const r = await fetch('/api/salt/' + encodeURIComponent(username));
     return r.json();
   },
-  async register(username, salt, authProof) {
+  async register(username, salt, authProof, inviteCode) {
     const r = await fetch('/api/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, salt, authProof })
+      body: JSON.stringify({ username, salt, authProof, inviteCode })
     });
     const data = await r.json();
     if (!r.ok) throw new Error(data.error || 'Registration failed');

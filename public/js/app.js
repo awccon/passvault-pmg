@@ -16,6 +16,8 @@ const authForm = document.getElementById('auth-form');
 const authError = document.getElementById('auth-error');
 const usernameInput = document.getElementById('username');
 const passwordInput = document.getElementById('master-password');
+const inviteCodeField = document.getElementById('invite-code-field');
+const inviteCodeInput = document.getElementById('invite-code');
 const modeToggle = document.getElementById('mode-toggle');
 const entriesEl = document.getElementById('entries');
 const addEntryBtn = document.getElementById('add-entry');
@@ -55,6 +57,9 @@ modeToggle.addEventListener('click', () => {
   modeToggle.textContent = mode === 'login' ? "Need an account? Register" : 'Already have an account? Log in';
   authError.textContent = '';
   pwStrengthEl.classList.add('hidden');
+  inviteCodeField.classList.toggle('hidden', mode !== 'register');
+  inviteCodeInput.required = mode === 'register';
+  if (mode !== 'register') inviteCodeInput.value = '';
 });
 
 // Rough client-side strength heuristic — just enough to steer people away
@@ -93,9 +98,10 @@ authForm.addEventListener('submit', async (e) => {
   }
   try {
     if (mode === 'register') {
+      const inviteCode = inviteCodeInput.value.trim();
       const salt = randomSaltB64Fn();
       const authProof = await deriveAuthProofFn(password, salt);
-      await Api.register(username, salt, authProof);
+      await Api.register(username, salt, authProof, inviteCode);
       await Api.login(username, authProof); // establish the server session
       encKey = await deriveEncKeyFn(password, salt);
     } else {
@@ -105,6 +111,7 @@ authForm.addEventListener('submit', async (e) => {
       encKey = await deriveEncKeyFn(password, salt);
     }
     passwordInput.value = '';
+    inviteCodeInput.value = '';
     pwStrengthEl.classList.add('hidden');
     await enterVault(username);
   } catch (err) {

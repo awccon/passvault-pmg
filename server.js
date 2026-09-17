@@ -14,6 +14,16 @@
 // self-hosted chat tool) since they need to be readable by every user,
 // not just the one who wrote them.
 
+// Load a .env file if one exists (an alternative to setting environment
+// variables on the command line — edit the file, no terminal needed).
+// A real environment variable (e.g. one set by pm2) always wins over
+// whatever's in the file, so this is safe to leave in place everywhere.
+try {
+  process.loadEnvFile();
+} catch (e) {
+  // No .env file present — fine, fall back to real environment variables.
+}
+
 const express = require('express');
 const session = require('express-session');
 const bcrypt = require('bcryptjs');
@@ -55,6 +65,22 @@ if (!process.env.SESSION_SECRET) {
   console.warn('WARNING: SESSION_SECRET not set in environment. Using a random secret ' +
     'that will change on every restart (all sessions will be invalidated). ' +
     'Set SESSION_SECRET in your environment for production use.');
+}
+
+// New accounts require this code (set by you, the operator) so only
+// people you've shared it with can register. Unset = registration
+// disabled entirely (fail closed, not fail open).
+const REGISTRATION_CODE = process.env.REGISTRATION_CODE || null;
+if (!REGISTRATION_CODE) {
+  console.warn('WARNING: REGISTRATION_CODE not set in environment. New account ' +
+    'registration is DISABLED until you set it. Existing accounts can still log in.');
+}
+
+function timingSafeEqualStr(a, b) {
+  const bufA = Buffer.from(String(a));
+  const bufB = Buffer.from(String(b));
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
 }
 
 app.use(session({
@@ -105,9 +131,15 @@ const chatLimiter = rateLimit({
 // PBKDF2 in the browser. We never see the master password itself.
 app.post('/api/register', loginLimiter, async (req, res) => {
   try {
-    const { username, salt, authProof } = req.body || {};
+    const { username, salt, authProof, inviteCode } = req.body || {};
     if (!username || !salt || !authProof) {
       return res.status(400).json({ error: 'Missing fields' });
+    }
+    if (!REGISTRATION_CODE) {
+      return res.status(503).json({ error: 'Registration is currently disabled on this server.' });
+    }
+    if (!inviteCode || !timingSafeEqualStr(inviteCode, REGISTRATION_CODE)) {
+      return res.status(403).json({ error: 'Invalid invite code' });
     }
     if (typeof username !== 'string' || username.length < 3 || username.length > 64) {
       return res.status(400).json({ error: 'Username must be 3-64 characters' });

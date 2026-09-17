@@ -35,7 +35,7 @@ Requires Node.js 18+.
 ```bash
 cd passvault
 npm install
-SESSION_SECRET="$(openssl rand -hex 32)" npm start
+SESSION_SECRET="$(openssl rand -hex 32)" REGISTRATION_CODE="pick-something-only-you-know" npm start
 ```
 
 Then open http://localhost:3000
@@ -44,6 +44,21 @@ Then open http://localhost:3000
 and keep it the same across restarts (otherwise everyone gets logged
 out whenever you restart the server). Store it as an environment
 variable, not in the code.
+
+`REGISTRATION_CODE` gates account creation — anyone registering has to
+enter this code, so share it only with people you want to have access.
+**If it's not set, registration is disabled entirely** (existing
+accounts can still log in) — this is deliberate fail-closed behavior,
+not a bug, so don't be alarmed if signups stop working after an
+upgrade until you set this.
+
+**Prefer not to type these on the command line?** Copy `.env.example`
+to a new file named `.env` in the project root and fill in the values
+there instead — it's a plain text file, edit it in any text editor.
+The app loads it automatically on startup. `.env` is gitignored, so it
+never gets committed. A real environment variable (e.g. one set by
+pm2) always overrides whatever's in `.env`, so it's safe to keep this
+file around even on a server that also sets these another way.
 
 ## Deploying on your own VPS
 
@@ -114,17 +129,25 @@ cd passvault
 npm install --production
 ```
 
-### 6. Set the session secret and start with pm2
+### 6. Set the session secret, registration code, and start with pm2
 
 ```bash
-openssl rand -hex 32   # copy the output
-SESSION_SECRET="<paste-the-generated-value>" COOKIE_SECURE=true \
+openssl rand -hex 32   # copy the output for SESSION_SECRET
+SESSION_SECRET="<paste-the-generated-value>" \
+  REGISTRATION_CODE="pick-something-only-you-know" \
+  COOKIE_SECURE=true \
   pm2 start server.js --name passvault
 pm2 save
 pm2 startup   # then run the command it prints
 ```
 
 Keep `SESSION_SECRET` the same forever — changing it logs everyone out.
+Share `REGISTRATION_CODE` only with people you want to be able to
+create an account; anyone else who finds the site can't self-register.
+(You can also put these in a `.env` file on the server instead of
+typing them here — see the note in [Running it locally](#running-it-locally).
+Just remember `pm2 start` only reads env at creation time — if you
+change `.env` later, run `pm2 restart passvault` to pick it up.)
 
 ### 7. Put Caddy in front for free HTTPS
 
@@ -157,9 +180,10 @@ your encrypted vault.
 
 ## Using the app
 
-- **Register** with a username and a strong master password (this is
-  the *only* password you need to remember — everything else lives
-  inside the vault).
+- **Register** with a username, an invite code (ask whoever runs this
+  server for one), and a strong master password (this is the *only*
+  password you need to remember — everything else lives inside the
+  vault).
 - Click **+ Add email address** to create a new header/section.
 - Each section has:
   - An editable **email address** as the header.

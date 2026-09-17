@@ -16,6 +16,11 @@
     <form id="auth-form">
       <label for="username">Username</label>
       <input id="username" type="text" autocomplete="username" required>
+      <div id="invite-code-field" class="hidden">
+        <label for="invite-code">Invite code</label>
+        <input id="invite-code" type="text" autocomplete="off">
+        <p class="hint">Ask whoever runs this server for an invite code — registration isn't open to everyone.</p>
+      </div>
       <label for="master-password">Master password</label>
       <input id="master-password" type="password" autocomplete="current-password" required>
       <div id="pw-strength" class="pw-strength hidden" aria-live="polite">
