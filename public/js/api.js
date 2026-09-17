@@ -79,6 +79,12 @@ const Api = {
     const data = await r.json();
     if (!r.ok) throw new Error(data.error || 'Failed to clear chat history');
     return data;
+  },
+  async getAdminActivity() {
+    const r = await fetch('/api/admin/activity');
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || 'Failed to load activity log');
+    return data;
   }
 };
 window.Api = Api;

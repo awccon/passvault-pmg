@@ -260,6 +260,17 @@ button { cursor: pointer; font-family: inherit; }
   border-radius: 6px; padding: 4px 8px; flex-shrink: 0;
 }
 .admin-empty { color: var(--muted); font-size: 14px; }
+.admin-activity-list {
+  display: flex; flex-direction: column; gap: 6px; margin-top: 10px;
+  max-height: 320px; overflow-y: auto;
+}
+.admin-activity-row {
+  display: flex; justify-content: space-between; gap: 10px; font-size: 13px;
+  padding: 8px 10px; background: var(--card-2); border: 1px solid var(--border); border-radius: 8px;
+}
+.admin-activity-row.warn { border-color: rgba(255,107,107,0.35); }
+.admin-activity-text { color: var(--text); min-width: 0; }
+.admin-activity-time { color: var(--muted); font-size: 12px; flex-shrink: 0; white-space: nowrap; }
 
 @media (max-width: 480px) {
   .topbar { flex-direction: column; align-items: flex-start; gap: 8px; }

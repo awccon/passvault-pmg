@@ -37,14 +37,17 @@ const DATA_DIR = path.join(__dirname, 'data');
 const USERS_FILE = path.join(DATA_DIR, 'users.json');
 const VAULTS_FILE = path.join(DATA_DIR, 'vaults.json');
 const MESSAGES_FILE = path.join(DATA_DIR, 'messages.json');
+const ACTIVITY_FILE = path.join(DATA_DIR, 'activity.json');
 
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 if (!fs.existsSync(USERS_FILE)) fs.writeFileSync(USERS_FILE, '[]');
 if (!fs.existsSync(VAULTS_FILE)) fs.writeFileSync(VAULTS_FILE, '[]');
 if (!fs.existsSync(MESSAGES_FILE)) fs.writeFileSync(MESSAGES_FILE, '[]');
+if (!fs.existsSync(ACTIVITY_FILE)) fs.writeFileSync(ACTIVITY_FILE, '[]');
 
 const MAX_MESSAGES = 500;
 const MAX_MESSAGE_LENGTH = 2000;
+const MAX_ACTIVITY_ENTRIES = 1000;
 
 function readJSON(file) {
   return JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -54,6 +57,21 @@ function writeJSON(file, data) {
   const tmp = file + '.tmp';
   fs.writeFileSync(tmp, JSON.stringify(data, null, 2));
   fs.renameSync(tmp, file);
+}
+
+// A lightweight audit trail for the admin tab: logins (successful and
+// failed), registrations, and admin actions. Never blocks the request
+// it's called from if writing it fails — it's a nice-to-have, not
+// load-bearing for the app to function.
+function logActivity(type, username, extra) {
+  try {
+    const activity = readJSON(ACTIVITY_FILE);
+    activity.push({ type, username, at: new Date().toISOString(), ...(extra || {}) });
+    if (activity.length > MAX_ACTIVITY_ENTRIES) activity.splice(0, activity.length - MAX_ACTIVITY_ENTRIES);
+    writeJSON(ACTIVITY_FILE, activity);
+  } catch (e) {
+    console.error('Failed to write activity log:', e);
+  }
 }
 
 const app = express();
@@ -190,6 +208,7 @@ app.post('/api/register', loginLimiter, async (req, res) => {
     vaults.push({ userId: user.id, iv: null, blob: null, updatedAt: null });
     writeJSON(VAULTS_FILE, vaults);
 
+    logActivity('register', username);
     res.json({ ok: true });
   } catch (e) {
     console.error(e);
@@ -222,9 +241,15 @@ app.post('/api/login', loginLimiter, async (req, res) => {
     const users = readJSON(USERS_FILE);
     const user = users.find(u => u.username.toLowerCase() === username.toLowerCase());
     const ok = await bcrypt.compare(authProof, user ? user.authHash : DUMMY_HASH);
-    if (!user || !ok) return res.status(401).json({ error: 'Invalid username or master password' });
+    if (!user || !ok) {
+      logActivity('login_failed', String(username).slice(0, 100));
+      return res.status(401).json({ error: 'Invalid username or master password' });
+    }
     req.session.userId = user.id;
     req.session.username = user.username;
+    user.lastLoginAt = new Date().toISOString();
+    writeJSON(USERS_FILE, users);
+    logActivity('login', user.username);
     res.json({ ok: true, username: user.username, isAdmin: isAdminUsername(user.username) });
   } catch (e) {
     console.error(e);
@@ -303,11 +328,17 @@ app.get('/api/admin/users', requireAdmin, (req, res) => {
       id: u.id,
       username: u.username,
       createdAt: u.createdAt,
+      lastLoginAt: u.lastLoginAt || null,
       hasVaultData: !!(v && v.blob),
       vaultUpdatedAt: v ? v.updatedAt : null
     };
   });
   res.json({ users: list, messageCount: messages.length });
+});
+
+app.get('/api/admin/activity', requireAdmin, (req, res) => {
+  const activity = readJSON(ACTIVITY_FILE);
+  res.json({ activity: activity.slice(-200).reverse() });
 });
 
 app.delete('/api/admin/users/:id', requireAdmin, (req, res) => {
@@ -321,11 +352,13 @@ app.delete('/api/admin/users/:id', requireAdmin, (req, res) => {
   writeJSON(USERS_FILE, users.filter(u => u.id !== id));
   const vaults = readJSON(VAULTS_FILE);
   writeJSON(VAULTS_FILE, vaults.filter(v => v.userId !== id));
+  logActivity('user_deleted', target.username, { deletedBy: req.session.username });
   res.json({ ok: true });
 });
 
 app.delete('/api/admin/messages', requireAdmin, (req, res) => {
   writeJSON(MESSAGES_FILE, []);
+  logActivity('chat_cleared', req.session.username);
   res.json({ ok: true });
 });
 

@@ -46,6 +46,7 @@ const adminPanel = document.getElementById('admin-panel');
 const adminUsersEl = document.getElementById('admin-users');
 const adminMessageCountEl = document.getElementById('admin-message-count');
 const clearChatBtn = document.getElementById('clear-chat-btn');
+const adminActivityEl = document.getElementById('admin-activity');
 const addExpenseBtn = document.getElementById('add-expense');
 const expensesEl = document.getElementById('expenses');
 const budgetTotalEl = document.getElementById('budget-total');
@@ -790,6 +791,12 @@ async function loadAdminData() {
   } catch (err) {
     announce(err.message || 'Failed to load admin data.');
   }
+  try {
+    const { activity } = await Api.getAdminActivity();
+    renderAdminActivity(activity);
+  } catch (err) {
+    announce(err.message || 'Failed to load activity log.');
+  }
 }
 
 function renderAdminUsers(users) {
@@ -816,7 +823,10 @@ function renderAdminUserRow(u) {
   const metaEl = document.createElement('span');
   metaEl.className = 'admin-user-meta';
   const joined = new Date(u.createdAt).toLocaleDateString();
-  metaEl.textContent = 'Joined ' + joined + (u.hasVaultData ? '' : ' · no vault data yet');
+  const lastLogin = u.lastLoginAt
+    ? 'last login ' + new Date(u.lastLoginAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+    : 'never logged in';
+  metaEl.textContent = 'Joined ' + joined + ' · ' + lastLogin + (u.hasVaultData ? '' : ' · no vault data yet');
   info.appendChild(nameEl);
   info.appendChild(metaEl);
   row.appendChild(info);
@@ -846,6 +856,46 @@ function renderAdminUserRow(u) {
     row.appendChild(delBtn);
   }
   return row;
+}
+
+const ACTIVITY_LABELS = {
+  login: e => e.username + ' logged in',
+  login_failed: e => 'Failed login attempt for "' + e.username + '"',
+  register: e => e.username + ' registered',
+  user_deleted: e => e.username + ' was deleted by ' + (e.deletedBy || 'admin'),
+  chat_cleared: e => 'Chat history cleared by ' + e.username
+};
+const ACTIVITY_ICONS = {
+  login: '🔓',
+  login_failed: '⚠️',
+  register: '✨',
+  user_deleted: '🗑',
+  chat_cleared: '🧹'
+};
+
+function renderAdminActivity(activity) {
+  adminActivityEl.innerHTML = '';
+  if (activity.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'admin-empty';
+    empty.textContent = 'No activity recorded yet.';
+    adminActivityEl.appendChild(empty);
+    return;
+  }
+  activity.forEach(e => {
+    const row = document.createElement('div');
+    row.className = 'admin-activity-row' + (e.type === 'login_failed' ? ' warn' : '');
+    const textEl = document.createElement('span');
+    textEl.className = 'admin-activity-text';
+    const label = ACTIVITY_LABELS[e.type] ? ACTIVITY_LABELS[e.type](e) : e.type;
+    textEl.textContent = (ACTIVITY_ICONS[e.type] || '•') + ' ' + label;
+    const timeEl = document.createElement('span');
+    timeEl.className = 'admin-activity-time';
+    timeEl.textContent = new Date(e.at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+    row.appendChild(textEl);
+    row.appendChild(timeEl);
+    adminActivityEl.appendChild(row);
+  });
 }
 
 clearChatBtn.addEventListener('click', async () => {
