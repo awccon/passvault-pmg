@@ -56,6 +56,33 @@
       <div class="content-toolbar">
         <button id="add-entry" class="primary-btn">+ Add email address</button>
       </div>
+
+      <div class="generator-card">
+        <button id="generator-toggle" class="generator-toggle" aria-expanded="false" aria-controls="generator-body" type="button">
+          <span>🎲 Password Generator</span>
+        </button>
+        <div id="generator-body" class="generator-body hidden">
+          <div class="generator-output-row">
+            <input id="generator-output" type="text" readonly aria-label="Generated password" class="generator-output">
+            <button id="generator-regenerate" class="icon-btn" type="button" title="Generate a new password" aria-label="Generate a new password">🔄</button>
+            <button id="generator-copy" class="icon-btn" type="button" title="Copy password" aria-label="Copy generated password">📋</button>
+          </div>
+          <div class="generator-options">
+            <div class="generator-length-row">
+              <label for="generator-length">Length: <span id="generator-length-value">20</span></label>
+              <input id="generator-length" type="range" min="8" max="64" value="20">
+            </div>
+            <div class="generator-checkboxes">
+              <label><input type="checkbox" id="opt-upper" checked> Uppercase (A-Z)</label>
+              <label><input type="checkbox" id="opt-lower" checked> Lowercase (a-z)</label>
+              <label><input type="checkbox" id="opt-numbers" checked> Numbers (0-9)</label>
+              <label><input type="checkbox" id="opt-symbols" checked> Symbols (!@#$…)</label>
+            </div>
+            <p id="generator-warning" class="generator-warning hidden" role="alert">Select at least one character type.</p>
+          </div>
+        </div>
+      </div>
+
       <div id="entries"></div>
     </section>
 

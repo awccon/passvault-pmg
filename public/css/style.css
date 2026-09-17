@@ -101,6 +101,32 @@ button { cursor: pointer; font-family: inherit; }
 .content-toolbar { margin-bottom: 18px; }
 .content-toolbar .primary-btn { width: auto; padding: 10px 18px; }
 
+/* --- Password generator --- */
+.generator-card {
+  background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+  margin-bottom: 16px; overflow: hidden;
+}
+.generator-toggle {
+  width: 100%; text-align: left; padding: 14px 16px; background: var(--card-2);
+  border: none; color: var(--text); font-weight: 600; font-size: 14px;
+  display: flex; justify-content: space-between; align-items: center;
+}
+.generator-toggle::after { content: '▾'; color: var(--muted); transition: transform .15s ease; }
+.generator-toggle[aria-expanded="true"]::after { transform: rotate(180deg); }
+.generator-body { padding: 16px; }
+.generator-output-row { display: flex; gap: 8px; margin-bottom: 14px; }
+.generator-output {
+  flex: 1; min-width: 0; font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: 15px; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--card-2); color: var(--text);
+}
+.generator-options { display: flex; flex-direction: column; gap: 12px; }
+.generator-length-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); }
+.generator-length-row input[type="range"] { flex: 1; }
+.generator-checkboxes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 13px; }
+.generator-checkboxes label { display: flex; align-items: center; gap: 6px; color: var(--text); margin: 0; }
+.generator-warning { color: var(--danger); font-size: 12px; margin: 0; }
+
 .entry-card {
   background: var(--card); border: 1px solid var(--border); border-radius: 12px;
   margin-bottom: 16px; overflow: hidden;
@@ -219,4 +245,5 @@ button { cursor: pointer; font-family: inherit; }
   .expense-date, .expense-category, .expense-amount { width: auto; flex: 1 1 120px; }
   .expense-description { flex: 1 1 100%; order: 5; }
   .chat-message { max-width: 88%; }
+  .generator-checkboxes { grid-template-columns: 1fr; }
 }

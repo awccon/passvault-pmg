@@ -71,10 +71,52 @@ async function decryptVault({ iv, blob }, encKey) {
   return JSON.parse(new TextDecoder().decode(plaintext));
 }
 
+// --- Password generator ---
+// Uses crypto.getRandomValues (not Math.random) with rejection sampling
+// to avoid modulo bias, same as the rest of this file.
+function secureRandomInt(max) {
+  const arr = new Uint32Array(1);
+  const range = Math.floor(0xFFFFFFFF / max) * max;
+  let x;
+  do {
+    crypto.getRandomValues(arr);
+    x = arr[0];
+  } while (x >= range);
+  return x % max;
+}
+
+const CHAR_SETS = {
+  upper: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ',
+  lower: 'abcdefghijklmnopqrstuvwxyz',
+  numbers: '0123456789',
+  symbols: '!@#$%^&*()-_=+[]{}?'
+};
+
+function generatePassword(length, opts) {
+  const sets = Object.keys(CHAR_SETS).filter(k => opts[k]).map(k => CHAR_SETS[k]);
+  if (sets.length === 0) return '';
+  const all = sets.join('');
+  const chars = [];
+  // Guarantee at least one character from each selected set (if length allows).
+  sets.forEach(set => {
+    if (chars.length < length) chars.push(set[secureRandomInt(set.length)]);
+  });
+  while (chars.length < length) {
+    chars.push(all[secureRandomInt(all.length)]);
+  }
+  // Fisher-Yates shuffle with the same secure randomness.
+  for (let i = chars.length - 1; i > 0; i--) {
+    const j = secureRandomInt(i + 1);
+    [chars[i], chars[j]] = [chars[j], chars[i]];
+  }
+  return chars.slice(0, length).join('');
+}
+
 window.PassVaultCrypto = {
   randomSaltB64,
   deriveAuthProof,
   deriveEncKey,
   encryptVault,
-  decryptVault
+  decryptVault,
+  generatePassword
 };

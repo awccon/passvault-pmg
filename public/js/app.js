@@ -4,6 +4,7 @@ const deriveEncKeyFn = PVCrypto.deriveEncKey;
 const encryptVaultFn = PVCrypto.encryptVault;
 const decryptVaultFn = PVCrypto.decryptVault;
 const randomSaltB64Fn = PVCrypto.randomSaltB64;
+const generatePasswordFn = PVCrypto.generatePassword;
 
 let encKey = null;       // lives only in memory, cleared on logout/refresh
 let vault = { entries: [], budget: { expenses: [] } };
@@ -21,6 +22,18 @@ const inviteCodeInput = document.getElementById('invite-code');
 const modeToggle = document.getElementById('mode-toggle');
 const entriesEl = document.getElementById('entries');
 const addEntryBtn = document.getElementById('add-entry');
+const generatorToggle = document.getElementById('generator-toggle');
+const generatorBody = document.getElementById('generator-body');
+const generatorOutput = document.getElementById('generator-output');
+const generatorRegenerateBtn = document.getElementById('generator-regenerate');
+const generatorCopyBtn = document.getElementById('generator-copy');
+const generatorLengthInput = document.getElementById('generator-length');
+const generatorLengthValue = document.getElementById('generator-length-value');
+const optUpper = document.getElementById('opt-upper');
+const optLower = document.getElementById('opt-lower');
+const optNumbers = document.getElementById('opt-numbers');
+const optSymbols = document.getElementById('opt-symbols');
+const generatorWarning = document.getElementById('generator-warning');
 const logoutBtn = document.getElementById('logout');
 const tabVaultBtn = document.getElementById('tab-vault');
 const tabBudgetBtn = document.getElementById('tab-budget');
@@ -49,6 +62,51 @@ let chatMessages = [];
 let lastMessageTime = null;
 let chatLoaded = false;
 let chatPollTimer = null;
+
+// Shared by the standalone generator panel and each row's quick-generate
+// button, so both honor whatever length/character settings were last set.
+let generatorOptions = { length: 20, upper: true, lower: true, numbers: true, symbols: true };
+
+function refreshGeneratorOptions() {
+  generatorOptions = {
+    length: parseInt(generatorLengthInput.value, 10) || 20,
+    upper: optUpper.checked,
+    lower: optLower.checked,
+    numbers: optNumbers.checked,
+    symbols: optSymbols.checked
+  };
+}
+
+function regenerateOutput() {
+  refreshGeneratorOptions();
+  generatorLengthValue.textContent = generatorOptions.length;
+  const anySelected = generatorOptions.upper || generatorOptions.lower || generatorOptions.numbers || generatorOptions.symbols;
+  generatorWarning.classList.toggle('hidden', anySelected);
+  generatorOutput.value = anySelected ? generatePasswordFn(generatorOptions.length, generatorOptions) : '';
+}
+
+generatorToggle.addEventListener('click', () => {
+  const expanded = generatorToggle.getAttribute('aria-expanded') === 'true';
+  generatorToggle.setAttribute('aria-expanded', String(!expanded));
+  generatorBody.classList.toggle('hidden', expanded);
+  if (!expanded && !generatorOutput.value) regenerateOutput();
+});
+generatorRegenerateBtn.addEventListener('click', regenerateOutput);
+generatorLengthInput.addEventListener('input', regenerateOutput);
+[optUpper, optLower, optNumbers, optSymbols].forEach(cb => cb.addEventListener('change', regenerateOutput));
+
+generatorCopyBtn.addEventListener('click', async () => {
+  if (!generatorOutput.value) return;
+  const value = generatorOutput.value;
+  try {
+    await navigator.clipboard.writeText(value);
+  } catch (e) {
+    generatorOutput.select();
+    document.execCommand('copy');
+  }
+  announce('Generated password copied to clipboard. It will clear automatically in 20 seconds.');
+  clearClipboardAfter(value, 20000);
+});
 
 modeToggle.addEventListener('click', () => {
   mode = mode === 'login' ? 'register' : 'login';
@@ -333,6 +391,26 @@ function renderPasswordRow(entry, pw, pwIdx) {
   valueInput.placeholder = 'Password';
   valueInput.addEventListener('input', () => { pw.value = valueInput.value; markDirty(); });
 
+  const generateBtn = document.createElement('button');
+  generateBtn.className = 'icon-btn';
+  generateBtn.textContent = '🎲';
+  generateBtn.title = 'Generate a random password';
+  generateBtn.setAttribute('aria-label', 'Generate a random password for ' + (pw.label || ('password ' + (pwIdx + 1))));
+  generateBtn.addEventListener('click', () => {
+    const generated = generatePasswordFn(generatorOptions.length, generatorOptions);
+    if (!generated) {
+      announce('Select at least one character type in the password generator first.');
+      return;
+    }
+    pw.value = generated;
+    valueInput.value = generated;
+    valueInput.type = 'text'; // reveal it briefly so there's a chance to see what was generated
+    toggleBtn.setAttribute('aria-label', 'Hide password');
+    toggleBtn.setAttribute('aria-pressed', 'true');
+    markDirty();
+    announce('Generated a new password for ' + (pw.label || ('password ' + (pwIdx + 1))) + '.');
+  });
+
   const toggleBtn = document.createElement('button');
   toggleBtn.className = 'icon-btn';
   toggleBtn.textContent = '👁';
@@ -382,6 +460,8 @@ function renderPasswordRow(entry, pw, pwIdx) {
   removeBtn.title = 'Remove this password';
   removeBtn.setAttribute('aria-label', 'Remove ' + (pw.label || ('password ' + (pwIdx + 1))));
   removeBtn.addEventListener('click', () => {
+    const label = pw.label || ('Password ' + (pwIdx + 1));
+    if (!confirm('Remove "' + label + '"? This cannot be undone.')) return;
     entry.passwords.splice(pwIdx, 1);
     markDirty();
     renderEntries();
@@ -389,6 +469,7 @@ function renderPasswordRow(entry, pw, pwIdx) {
 
   row.appendChild(labelInput);
   row.appendChild(valueInput);
+  row.appendChild(generateBtn);
   row.appendChild(toggleBtn);
   row.appendChild(copyBtn);
   row.appendChild(removeBtn);
@@ -421,6 +502,7 @@ function renderKeyQuestionRow(entry, kq, kqIdx) {
   removeBtn.title = 'Remove this key question';
   removeBtn.setAttribute('aria-label', 'Remove security question ' + (kqIdx + 1));
   removeBtn.addEventListener('click', () => {
+    if (!confirm('Remove this security question? This cannot be undone.')) return;
     entry.keyQuestions.splice(kqIdx, 1);
     markDirty();
     renderEntries();
