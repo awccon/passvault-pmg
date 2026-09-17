@@ -287,6 +287,42 @@ app.put('/api/vault', requireAuth, (req, res) => {
   res.json({ ok: true });
 });
 
+// Change master password: the client re-derives everything (new salt,
+// new authProof, and the vault re-encrypted with the new key) and just
+// hands us the result — we never see either master password. Requires
+// re-proving the CURRENT password via bcrypt, independent of the
+// session, as defense-in-depth for this sensitive an action.
+app.put('/api/account/password', requireAuth, loginLimiter, async (req, res) => {
+  try {
+    const { currentAuthProof, newSalt, newAuthProof, iv, blob } = req.body || {};
+    if (!currentAuthProof || !newSalt || !newAuthProof || !iv || !blob) {
+      return res.status(400).json({ error: 'Missing fields' });
+    }
+    const users = readJSON(USERS_FILE);
+    const idx = users.findIndex(u => u.id === req.session.userId);
+    if (idx === -1) return res.status(401).json({ error: 'Not logged in' });
+    const user = users[idx];
+    const ok = await bcrypt.compare(currentAuthProof, user.authHash);
+    if (!ok) return res.status(401).json({ error: 'Current master password is incorrect' });
+
+    const newAuthHash = await bcrypt.hash(newAuthProof, 12);
+    users[idx] = { ...user, salt: newSalt, authHash: newAuthHash };
+    writeJSON(USERS_FILE, users);
+
+    const vaults = readJSON(VAULTS_FILE);
+    const vIdx = vaults.findIndex(v => v.userId === user.id);
+    const entry = { userId: user.id, iv, blob, updatedAt: new Date().toISOString() };
+    if (vIdx === -1) vaults.push(entry); else vaults[vIdx] = entry;
+    writeJSON(VAULTS_FILE, vaults);
+
+    logActivity('password_changed', user.username);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // --- Chat (shared, plain text — see note at the top of this file) ---
 app.get('/api/messages', requireAuth, (req, res) => {
   const messages = readJSON(MESSAGES_FILE);

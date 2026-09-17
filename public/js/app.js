@@ -35,6 +35,18 @@ const optNumbers = document.getElementById('opt-numbers');
 const optSymbols = document.getElementById('opt-symbols');
 const generatorWarning = document.getElementById('generator-warning');
 const logoutBtn = document.getElementById('logout');
+const changePasswordBtn = document.getElementById('change-password-btn');
+const changePasswordDialog = document.getElementById('change-password-dialog');
+const changePasswordForm = document.getElementById('change-password-form');
+const cpCurrentInput = document.getElementById('cp-current');
+const cpNewInput = document.getElementById('cp-new');
+const cpConfirmInput = document.getElementById('cp-confirm');
+const cpError = document.getElementById('cp-error');
+const cpSubmitBtn = document.getElementById('cp-submit');
+const cpCancelBtn = document.getElementById('cp-cancel');
+const cpStrengthEl = document.getElementById('cp-strength');
+const cpStrengthFill = document.getElementById('cp-strength-fill');
+const cpStrengthLabel = document.getElementById('cp-strength-label');
 const tabVaultBtn = document.getElementById('tab-vault');
 const tabBudgetBtn = document.getElementById('tab-budget');
 const tabChatBtn = document.getElementById('tab-chat');
@@ -141,15 +153,18 @@ function estimatePasswordStrength(pw) {
   return { label: 'Strong', score, level: 'strong' };
 }
 
+function updateStrengthMeter(pw, containerEl, fillEl, labelEl) {
+  if (!pw) { containerEl.classList.add('hidden'); return; }
+  containerEl.classList.remove('hidden');
+  const { label, score, level } = estimatePasswordStrength(pw);
+  fillEl.style.width = Math.round(score * 100) + '%';
+  fillEl.className = 'pw-strength-fill' + (level ? ' ' + level : '');
+  labelEl.textContent = 'Master password strength: ' + label;
+}
+
 passwordInput.addEventListener('input', () => {
   if (mode !== 'register') return;
-  const pw = passwordInput.value;
-  if (!pw) { pwStrengthEl.classList.add('hidden'); return; }
-  pwStrengthEl.classList.remove('hidden');
-  const { label, score, level } = estimatePasswordStrength(pw);
-  pwStrengthFill.style.width = Math.round(score * 100) + '%';
-  pwStrengthFill.className = 'pw-strength-fill' + (level ? ' ' + level : '');
-  pwStrengthLabel.textContent = 'Master password strength: ' + label;
+  updateStrengthMeter(passwordInput.value, pwStrengthEl, pwStrengthFill, pwStrengthLabel);
 });
 
 authForm.addEventListener('submit', async (e) => {
@@ -230,6 +245,80 @@ logoutBtn.addEventListener('click', async () => {
   vaultView.classList.add('hidden');
   authView.classList.remove('hidden');
   authForm.reset();
+});
+
+function resetChangePasswordForm() {
+  changePasswordForm.reset();
+  cpError.textContent = '';
+  cpStrengthEl.classList.add('hidden');
+  cpSubmitBtn.disabled = false;
+}
+
+changePasswordBtn.addEventListener('click', () => {
+  resetChangePasswordForm();
+  changePasswordDialog.showModal();
+  cpCurrentInput.focus();
+});
+
+cpCancelBtn.addEventListener('click', () => {
+  changePasswordDialog.close();
+});
+
+cpNewInput.addEventListener('input', () => {
+  updateStrengthMeter(cpNewInput.value, cpStrengthEl, cpStrengthFill, cpStrengthLabel);
+});
+
+changePasswordForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  cpError.textContent = '';
+  const currentPassword = cpCurrentInput.value;
+  const newPassword = cpNewInput.value;
+  const confirmPassword = cpConfirmInput.value;
+  if (newPassword.length < 8) {
+    cpError.textContent = 'New master password should be at least 8 characters.';
+    return;
+  }
+  if (newPassword !== confirmPassword) {
+    cpError.textContent = 'New master password and confirmation don\'t match.';
+    return;
+  }
+  cpSubmitBtn.disabled = true;
+  try {
+    const username = currentUserEl.textContent;
+    const { salt: currentSalt } = await Api.getSalt(username);
+    const currentAuthProof = await deriveAuthProofFn(currentPassword, currentSalt);
+    const candidateEncKey = await deriveEncKeyFn(currentPassword, currentSalt);
+
+    const stored = await Api.getVault();
+    let decryptedVault;
+    try {
+      decryptedVault = stored.blob ? await decryptVaultFn(stored, candidateEncKey) : vault;
+    } catch (err) {
+      cpError.textContent = 'Current master password is incorrect.';
+      cpSubmitBtn.disabled = false;
+      return;
+    }
+
+    // Flush any pending autosave (made with the OLD key) before we
+    // overwrite the stored vault with one encrypted under the NEW key.
+    clearTimeout(saveTimer);
+    if (dirty) await saveVaultNow();
+
+    const newSalt = randomSaltB64Fn();
+    const newAuthProof = await deriveAuthProofFn(newPassword, newSalt);
+    const newEncKey = await deriveEncKeyFn(newPassword, newSalt);
+    const { iv, blob } = await encryptVaultFn(decryptedVault, newEncKey);
+
+    await Api.changePassword(currentAuthProof, newSalt, newAuthProof, iv, blob);
+
+    encKey = newEncKey; // future autosaves must use the new key
+    changePasswordDialog.close();
+    announce('Master password changed.');
+  } catch (err) {
+    cpError.textContent = err.message || 'Something went wrong.';
+  } finally {
+    cpSubmitBtn.disabled = false;
+  }
 });
 
 async function enterVault(username) {
@@ -863,14 +952,16 @@ const ACTIVITY_LABELS = {
   login_failed: e => 'Failed login attempt for "' + e.username + '"',
   register: e => e.username + ' registered',
   user_deleted: e => e.username + ' was deleted by ' + (e.deletedBy || 'admin'),
-  chat_cleared: e => 'Chat history cleared by ' + e.username
+  chat_cleared: e => 'Chat history cleared by ' + e.username,
+  password_changed: e => e.username + ' changed their master password'
 };
 const ACTIVITY_ICONS = {
   login: '🔓',
   login_failed: '⚠️',
   register: '✨',
   user_deleted: '🗑',
-  chat_cleared: '🧹'
+  chat_cleared: '🧹',
+  password_changed: '🔑'
 };
 
 function renderAdminActivity(activity) {

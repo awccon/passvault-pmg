@@ -41,6 +41,7 @@
     <div class="topbar-right">
       <span id="save-status" class="save-status" role="status" aria-live="polite"></span>
       <span>Signed in as <strong id="current-user"></strong></span>
+      <button id="change-password-btn" class="secondary-btn" type="button">🔑 Change password</button>
       <button id="logout" class="secondary-btn">Log out</button>
     </div>
   </header>
@@ -138,6 +139,33 @@
       </div>
     </section>
   </main>
+
+  <dialog id="change-password-dialog" class="cp-dialog">
+    <form id="change-password-form">
+      <h2>Change master password</h2>
+      <p class="hint">You'll need your current master password. Changing it re-encrypts your whole vault — make sure you'll remember the new one, since it still can't be recovered if lost.</p>
+
+      <label for="cp-current">Current master password</label>
+      <input id="cp-current" type="password" autocomplete="current-password" required>
+
+      <label for="cp-new">New master password</label>
+      <input id="cp-new" type="password" autocomplete="new-password" required>
+      <div id="cp-strength" class="pw-strength hidden" aria-live="polite">
+        <div class="pw-strength-bar"><div id="cp-strength-fill" class="pw-strength-fill"></div></div>
+        <span id="cp-strength-label" class="pw-strength-label"></span>
+      </div>
+
+      <label for="cp-confirm">Confirm new master password</label>
+      <input id="cp-confirm" type="password" autocomplete="new-password" required>
+
+      <div id="cp-error" class="error" role="alert"></div>
+
+      <div class="cp-actions">
+        <button type="button" id="cp-cancel" class="secondary-btn">Cancel</button>
+        <button type="submit" id="cp-submit" class="primary-btn">Change password</button>
+      </div>
+    </form>
+  </dialog>
 </div>
 
 <div id="sr-status" class="sr-only" role="status" aria-live="polite"></div>

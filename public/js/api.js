@@ -46,6 +46,16 @@ const Api = {
     if (!r.ok) throw new Error(data.error || 'Save failed');
     return data;
   },
+  async changePassword(currentAuthProof, newSalt, newAuthProof, iv, blob) {
+    const r = await fetch('/api/account/password', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ currentAuthProof, newSalt, newAuthProof, iv, blob })
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || 'Failed to change password');
+    return data;
+  },
   async getMessages(since) {
     const url = '/api/messages' + (since ? ('?since=' + encodeURIComponent(since)) : '');
     const r = await fetch(url);
