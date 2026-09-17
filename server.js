@@ -13,6 +13,7 @@ const express = require('express');
 const session = require('express-session');
 const bcrypt = require('bcryptjs');
 const cookieParser = require('cookie-parser');
+const rateLimit = require('express-rate-limit');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
@@ -70,11 +71,20 @@ function requireAuth(req, res, next) {
   next();
 }
 
+// Limit brute-forcing of master passwords / usernames.
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many attempts. Please try again later.' }
+});
+
 // --- Registration ---
 // Client sends: username, salt (base64, generated client-side),
 // authProof (base64) = a value derived from the master password via
 // PBKDF2 in the browser. We never see the master password itself.
-app.post('/api/register', async (req, res) => {
+app.post('/api/register', loginLimiter, async (req, res) => {
   try {
     const { username, salt, authProof } = req.body || {};
     if (!username || !salt || !authProof) {
@@ -122,15 +132,19 @@ app.get('/api/salt/:username', (req, res) => {
   res.json({ salt: user.salt });
 });
 
-app.post('/api/login', async (req, res) => {
+// A precomputed dummy hash, compared against when the username doesn't
+// exist, so login always takes ~the same time either way and can't be
+// used to enumerate valid usernames via timing.
+const DUMMY_HASH = bcrypt.hashSync('no-such-user-dummy-password', 12);
+
+app.post('/api/login', loginLimiter, async (req, res) => {
   try {
     const { username, authProof } = req.body || {};
     if (!username || !authProof) return res.status(400).json({ error: 'Missing fields' });
     const users = readJSON(USERS_FILE);
     const user = users.find(u => u.username.toLowerCase() === username.toLowerCase());
-    if (!user) return res.status(401).json({ error: 'Invalid username or master password' });
-    const ok = await bcrypt.compare(authProof, user.authHash);
-    if (!ok) return res.status(401).json({ error: 'Invalid username or master password' });
+    const ok = await bcrypt.compare(authProof, user ? user.authHash : DUMMY_HASH);
+    if (!user || !ok) return res.status(401).json({ error: 'Invalid username or master password' });
     req.session.userId = user.id;
     req.session.username = user.username;
     res.json({ ok: true, username: user.username });

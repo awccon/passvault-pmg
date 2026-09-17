@@ -22,6 +22,11 @@ const addEntryBtn = document.getElementById('add-entry');
 const logoutBtn = document.getElementById('logout');
 const currentUserEl = document.getElementById('current-user');
 const saveStatusEl = document.getElementById('save-status');
+const srStatusEl = document.getElementById('sr-status');
+function announce(text) { srStatusEl.textContent = text; }
+const pwStrengthEl = document.getElementById('pw-strength');
+const pwStrengthFill = document.getElementById('pw-strength-fill');
+const pwStrengthLabel = document.getElementById('pw-strength-label');
 
 let mode = 'login'; // or 'register'
 
@@ -31,6 +36,31 @@ modeToggle.addEventListener('click', () => {
   document.getElementById('auth-submit').textContent = mode === 'login' ? 'Log in' : 'Create account';
   modeToggle.textContent = mode === 'login' ? "Need an account? Register" : 'Already have an account? Log in';
   authError.textContent = '';
+  pwStrengthEl.classList.add('hidden');
+});
+
+// Rough client-side strength heuristic — just enough to steer people away
+// from a weak master password, which can't be recovered if forgotten.
+function estimatePasswordStrength(pw) {
+  const variety = [/[a-z]/, /[A-Z]/, /[0-9]/, /[^A-Za-z0-9]/].filter(re => re.test(pw)).length;
+  const lengthScore = Math.min(pw.length / 20, 1);
+  const score = lengthScore * 0.7 + (variety / 4) * 0.3;
+  if (pw.length < 8) return { label: 'Too short', score: 0.08, level: '' };
+  if (score < 0.4) return { label: 'Weak', score, level: '' };
+  if (score < 0.65) return { label: 'Fair', score, level: 'fair' };
+  if (score < 0.85) return { label: 'Good', score, level: 'good' };
+  return { label: 'Strong', score, level: 'strong' };
+}
+
+passwordInput.addEventListener('input', () => {
+  if (mode !== 'register') return;
+  const pw = passwordInput.value;
+  if (!pw) { pwStrengthEl.classList.add('hidden'); return; }
+  pwStrengthEl.classList.remove('hidden');
+  const { label, score, level } = estimatePasswordStrength(pw);
+  pwStrengthFill.style.width = Math.round(score * 100) + '%';
+  pwStrengthFill.className = 'pw-strength-fill' + (level ? ' ' + level : '');
+  pwStrengthLabel.textContent = 'Master password strength: ' + label;
 });
 
 authForm.addEventListener('submit', async (e) => {
@@ -57,6 +87,7 @@ authForm.addEventListener('submit', async (e) => {
       encKey = await deriveEncKeyFn(password, salt);
     }
     passwordInput.value = '';
+    pwStrengthEl.classList.add('hidden');
     await enterVault(username);
   } catch (err) {
     authError.textContent = err.message || 'Something went wrong.';
@@ -64,6 +95,8 @@ authForm.addEventListener('submit', async (e) => {
 });
 
 logoutBtn.addEventListener('click', async () => {
+  clearTimeout(saveTimer);
+  if (dirty) await saveVaultNow(); // flush any pending debounced save first
   await Api.logout();
   encKey = null;
   vault = { entries: [] };
@@ -119,6 +152,8 @@ function renderEntry(entry, idx) {
   const emailInput = document.createElement('input');
   emailInput.type = 'text';
   emailInput.placeholder = 'Email address (this is the header)';
+  emailInput.setAttribute('aria-label', 'Email address (section header)');
+  emailInput.autocomplete = 'off';
   emailInput.value = entry.email;
   emailInput.className = 'email-input';
   emailInput.addEventListener('input', () => { entry.email = emailInput.value; markDirty(); });
@@ -126,6 +161,7 @@ function renderEntry(entry, idx) {
   removeBtn.className = 'icon-btn danger';
   removeBtn.textContent = '✕';
   removeBtn.title = 'Remove this section';
+  removeBtn.setAttribute('aria-label', 'Remove section for ' + (entry.email || 'this entry'));
   removeBtn.addEventListener('click', () => {
     if (confirm('Remove this section for ' + (entry.email || '(no email)') + '? This cannot be undone.')) {
       vault.entries.splice(idx, 1);
@@ -143,8 +179,11 @@ function renderEntry(entry, idx) {
   // Username
   const userLabel = document.createElement('label');
   userLabel.textContent = 'Username';
+  userLabel.htmlFor = 'username-' + entry.id;
   const userInput = document.createElement('input');
   userInput.type = 'text';
+  userInput.id = 'username-' + entry.id;
+  userInput.autocomplete = 'off';
   userInput.value = entry.username;
   userInput.addEventListener('input', () => { entry.username = userInput.value; markDirty(); });
   body.appendChild(userLabel);
@@ -204,6 +243,19 @@ function renderEntry(entry, idx) {
   return card;
 }
 
+function clearClipboardAfter(expectedValue, delayMs) {
+  setTimeout(async () => {
+    try {
+      const current = await navigator.clipboard.readText();
+      if (current === expectedValue) {
+        await navigator.clipboard.writeText('');
+      }
+    } catch (e) {
+      // Clipboard read permission denied or unavailable — nothing we can do.
+    }
+  }, delayMs);
+}
+
 function renderPasswordRow(entry, pw, pwIdx) {
   const row = document.createElement('div');
   row.className = 'pw-row';
@@ -211,12 +263,16 @@ function renderPasswordRow(entry, pw, pwIdx) {
   const labelInput = document.createElement('input');
   labelInput.type = 'text';
   labelInput.className = 'pw-label';
+  labelInput.setAttribute('aria-label', 'Label for password ' + (pwIdx + 1));
+  labelInput.autocomplete = 'off';
   labelInput.value = pw.label || ('Password ' + (pwIdx + 1));
   labelInput.addEventListener('input', () => { pw.label = labelInput.value; markDirty(); });
 
   const valueInput = document.createElement('input');
   valueInput.type = 'password';
   valueInput.className = 'pw-value';
+  valueInput.setAttribute('aria-label', (pw.label || ('Password ' + (pwIdx + 1))) + ' value');
+  valueInput.autocomplete = 'off';
   valueInput.value = pw.value;
   valueInput.placeholder = 'Password';
   valueInput.addEventListener('input', () => { pw.value = valueInput.value; markDirty(); });
@@ -225,22 +281,29 @@ function renderPasswordRow(entry, pw, pwIdx) {
   toggleBtn.className = 'icon-btn';
   toggleBtn.textContent = '👁';
   toggleBtn.title = 'Show/hide';
+  toggleBtn.setAttribute('aria-label', 'Show password');
+  toggleBtn.setAttribute('aria-pressed', 'false');
   toggleBtn.addEventListener('click', () => {
-    valueInput.type = valueInput.type === 'password' ? 'text' : 'password';
+    const nowVisible = valueInput.type === 'password';
+    valueInput.type = nowVisible ? 'text' : 'password';
+    toggleBtn.setAttribute('aria-label', nowVisible ? 'Hide password' : 'Show password');
+    toggleBtn.setAttribute('aria-pressed', String(nowVisible));
   });
 
   const copyBtn = document.createElement('button');
   copyBtn.className = 'icon-btn';
   copyBtn.textContent = '📋';
   copyBtn.title = 'Copy password';
+  copyBtn.setAttribute('aria-label', 'Copy password to clipboard');
   copyBtn.addEventListener('click', async () => {
     if (!pw.value) return;
+    const copiedValue = pw.value;
     try {
-      await navigator.clipboard.writeText(pw.value);
+      await navigator.clipboard.writeText(copiedValue);
     } catch (e) {
       // Fallback for browsers/contexts without Clipboard API access
       const tmp = document.createElement('textarea');
-      tmp.value = pw.value;
+      tmp.value = copiedValue;
       tmp.style.position = 'fixed';
       tmp.style.opacity = '0';
       document.body.appendChild(tmp);
@@ -251,12 +314,17 @@ function renderPasswordRow(entry, pw, pwIdx) {
     const original = copyBtn.textContent;
     copyBtn.textContent = '✅';
     setTimeout(() => { copyBtn.textContent = original; }, 1200);
+    announce('Password copied to clipboard. It will clear automatically in 20 seconds.');
+    // Clear the clipboard after a delay, but only if it still holds
+    // what we put there (avoid clobbering something the user copied since).
+    clearClipboardAfter(copiedValue, 20000);
   });
 
   const removeBtn = document.createElement('button');
   removeBtn.className = 'icon-btn danger';
   removeBtn.textContent = '✕';
   removeBtn.title = 'Remove this password';
+  removeBtn.setAttribute('aria-label', 'Remove ' + (pw.label || ('password ' + (pwIdx + 1))));
   removeBtn.addEventListener('click', () => {
     entry.passwords.splice(pwIdx, 1);
     markDirty();
@@ -278,18 +346,24 @@ function renderKeyQuestionRow(entry, kq, kqIdx) {
   const qInput = document.createElement('input');
   qInput.type = 'text';
   qInput.placeholder = 'Question (e.g. Mother\'s maiden name)';
+  qInput.setAttribute('aria-label', 'Security question ' + (kqIdx + 1));
+  qInput.autocomplete = 'off';
   qInput.value = kq.question;
   qInput.addEventListener('input', () => { kq.question = qInput.value; markDirty(); });
 
   const aInput = document.createElement('input');
   aInput.type = 'text';
   aInput.placeholder = 'Answer';
+  aInput.setAttribute('aria-label', 'Answer to security question ' + (kqIdx + 1));
+  aInput.autocomplete = 'off';
   aInput.value = kq.answer;
   aInput.addEventListener('input', () => { kq.answer = aInput.value; markDirty(); });
 
   const removeBtn = document.createElement('button');
   removeBtn.className = 'icon-btn danger';
   removeBtn.textContent = '✕';
+  removeBtn.title = 'Remove this key question';
+  removeBtn.setAttribute('aria-label', 'Remove security question ' + (kqIdx + 1));
   removeBtn.addEventListener('click', () => {
     entry.keyQuestions.splice(kqIdx, 1);
     markDirty();
