@@ -1,0 +1,321 @@
+const { deriveAuthProof, deriveEncKey, encryptVault, decryptVault, randomSaltB64 } = window.PassVaultCrypto;
+
+let encKey = null;       // lives only in memory, cleared on logout/refresh
+let vault = { entries: [] };
+let saveTimer = null;
+let dirty = false;
+
+const authView = document.getElementById('auth-view');
+const vaultView = document.getElementById('vault-view');
+const authForm = document.getElementById('auth-form');
+const authError = document.getElementById('auth-error');
+const usernameInput = document.getElementById('username');
+const passwordInput = document.getElementById('master-password');
+const modeToggle = document.getElementById('mode-toggle');
+const entriesEl = document.getElementById('entries');
+const addEntryBtn = document.getElementById('add-entry');
+const logoutBtn = document.getElementById('logout');
+const currentUserEl = document.getElementById('current-user');
+const saveStatusEl = document.getElementById('save-status');
+
+let mode = 'login'; // or 'register'
+
+modeToggle.addEventListener('click', () => {
+  mode = mode === 'login' ? 'register' : 'login';
+  document.getElementById('auth-title').textContent = mode === 'login' ? 'Log in' : 'Create account';
+  document.getElementById('auth-submit').textContent = mode === 'login' ? 'Log in' : 'Create account';
+  modeToggle.textContent = mode === 'login' ? "Need an account? Register" : 'Already have an account? Log in';
+  authError.textContent = '';
+});
+
+authForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  authError.textContent = '';
+  const username = usernameInput.value.trim();
+  const password = passwordInput.value;
+  if (!username || !password) return;
+  if (mode === 'register' && password.length < 8) {
+    authError.textContent = 'Master password should be at least 8 characters — this is the ONE password you must never forget.';
+    return;
+  }
+  try {
+    if (mode === 'register') {
+      const salt = randomSaltB64();
+      const authProof = await deriveAuthProof(password, salt);
+      await Api.register(username, salt, authProof);
+      encKey = await deriveEncKey(password, salt);
+    } else {
+      const { salt } = await Api.getSalt(username);
+      const authProof = await deriveAuthProof(password, salt);
+      await Api.login(username, authProof);
+      encKey = await deriveEncKey(password, salt);
+    }
+    passwordInput.value = '';
+    await enterVault(username);
+  } catch (err) {
+    authError.textContent = err.message || 'Something went wrong.';
+  }
+});
+
+logoutBtn.addEventListener('click', async () => {
+  await Api.logout();
+  encKey = null;
+  vault = { entries: [] };
+  vaultView.classList.add('hidden');
+  authView.classList.remove('hidden');
+  authForm.reset();
+});
+
+async function enterVault(username) {
+  currentUserEl.textContent = username;
+  const stored = await Api.getVault();
+  if (stored.blob) {
+    try {
+      vault = await decryptVault(stored, encKey);
+    } catch (e) {
+      authError.textContent = 'Could not decrypt vault — wrong master password?';
+      encKey = null;
+      return;
+    }
+  } else {
+    vault = { entries: [] };
+  }
+  if (!vault.entries) vault.entries = [];
+  authView.classList.add('hidden');
+  vaultView.classList.remove('hidden');
+  renderEntries();
+}
+
+function newEntry() {
+  return {
+    id: crypto.randomUUID(),
+    email: '',
+    username: '',
+    passwords: [{ label: 'Password 1', value: '' }],
+    keyQuestions: []
+  };
+}
+
+function renderEntries() {
+  entriesEl.innerHTML = '';
+  vault.entries.forEach((entry, idx) => {
+    entriesEl.appendChild(renderEntry(entry, idx));
+  });
+}
+
+function renderEntry(entry, idx) {
+  const card = document.createElement('div');
+  card.className = 'entry-card';
+
+  // Header: editable email address
+  const header = document.createElement('div');
+  header.className = 'entry-header';
+  const emailInput = document.createElement('input');
+  emailInput.type = 'text';
+  emailInput.placeholder = 'Email address (this is the header)';
+  emailInput.value = entry.email;
+  emailInput.className = 'email-input';
+  emailInput.addEventListener('input', () => { entry.email = emailInput.value; markDirty(); });
+  const removeBtn = document.createElement('button');
+  removeBtn.className = 'icon-btn danger';
+  removeBtn.textContent = '✕';
+  removeBtn.title = 'Remove this section';
+  removeBtn.addEventListener('click', () => {
+    if (confirm('Remove this section for ' + (entry.email || '(no email)') + '? This cannot be undone.')) {
+      vault.entries.splice(idx, 1);
+      markDirty();
+      renderEntries();
+    }
+  });
+  header.appendChild(emailInput);
+  header.appendChild(removeBtn);
+  card.appendChild(header);
+
+  const body = document.createElement('div');
+  body.className = 'entry-body';
+
+  // Username
+  const userLabel = document.createElement('label');
+  userLabel.textContent = 'Username';
+  const userInput = document.createElement('input');
+  userInput.type = 'text';
+  userInput.value = entry.username;
+  userInput.addEventListener('input', () => { entry.username = userInput.value; markDirty(); });
+  body.appendChild(userLabel);
+  body.appendChild(userInput);
+
+  // Passwords (up to 5)
+  const pwSection = document.createElement('div');
+  pwSection.className = 'sub-section';
+  const pwTitle = document.createElement('div');
+  pwTitle.className = 'sub-title';
+  pwTitle.textContent = 'Passwords (up to 5)';
+  pwSection.appendChild(pwTitle);
+
+  const pwList = document.createElement('div');
+  entry.passwords.forEach((pw, pwIdx) => {
+    pwList.appendChild(renderPasswordRow(entry, pw, pwIdx));
+  });
+  pwSection.appendChild(pwList);
+
+  const addPwBtn = document.createElement('button');
+  addPwBtn.className = 'link-btn';
+  addPwBtn.textContent = '+ Add password';
+  addPwBtn.addEventListener('click', () => {
+    if (entry.passwords.length >= 5) return;
+    entry.passwords.push({ label: 'Password ' + (entry.passwords.length + 1), value: '' });
+    markDirty();
+    renderEntries();
+  });
+  if (entry.passwords.length >= 5) addPwBtn.disabled = true;
+  pwSection.appendChild(addPwBtn);
+  body.appendChild(pwSection);
+
+  // Key Questions
+  const kqSection = document.createElement('div');
+  kqSection.className = 'sub-section';
+  const kqTitle = document.createElement('div');
+  kqTitle.className = 'sub-title';
+  kqTitle.textContent = 'Key Questions';
+  kqSection.appendChild(kqTitle);
+
+  entry.keyQuestions.forEach((kq, kqIdx) => {
+    kqSection.appendChild(renderKeyQuestionRow(entry, kq, kqIdx));
+  });
+
+  const addKqBtn = document.createElement('button');
+  addKqBtn.className = 'link-btn';
+  addKqBtn.textContent = '+ Add key question';
+  addKqBtn.addEventListener('click', () => {
+    entry.keyQuestions.push({ question: '', answer: '' });
+    markDirty();
+    renderEntries();
+  });
+  kqSection.appendChild(addKqBtn);
+  body.appendChild(kqSection);
+
+  card.appendChild(body);
+  return card;
+}
+
+function renderPasswordRow(entry, pw, pwIdx) {
+  const row = document.createElement('div');
+  row.className = 'pw-row';
+
+  const labelInput = document.createElement('input');
+  labelInput.type = 'text';
+  labelInput.className = 'pw-label';
+  labelInput.value = pw.label || ('Password ' + (pwIdx + 1));
+  labelInput.addEventListener('input', () => { pw.label = labelInput.value; markDirty(); });
+
+  const valueInput = document.createElement('input');
+  valueInput.type = 'password';
+  valueInput.className = 'pw-value';
+  valueInput.value = pw.value;
+  valueInput.placeholder = 'Password';
+  valueInput.addEventListener('input', () => { pw.value = valueInput.value; markDirty(); });
+
+  const toggleBtn = document.createElement('button');
+  toggleBtn.className = 'icon-btn';
+  toggleBtn.textContent = '👁';
+  toggleBtn.title = 'Show/hide';
+  toggleBtn.addEventListener('click', () => {
+    valueInput.type = valueInput.type === 'password' ? 'text' : 'password';
+  });
+
+  const removeBtn = document.createElement('button');
+  removeBtn.className = 'icon-btn danger';
+  removeBtn.textContent = '✕';
+  removeBtn.title = 'Remove this password';
+  removeBtn.addEventListener('click', () => {
+    entry.passwords.splice(pwIdx, 1);
+    markDirty();
+    renderEntries();
+  });
+
+  row.appendChild(labelInput);
+  row.appendChild(valueInput);
+  row.appendChild(toggleBtn);
+  row.appendChild(removeBtn);
+  return row;
+}
+
+function renderKeyQuestionRow(entry, kq, kqIdx) {
+  const row = document.createElement('div');
+  row.className = 'kq-row';
+
+  const qInput = document.createElement('input');
+  qInput.type = 'text';
+  qInput.placeholder = 'Question (e.g. Mother\'s maiden name)';
+  qInput.value = kq.question;
+  qInput.addEventListener('input', () => { kq.question = qInput.value; markDirty(); });
+
+  const aInput = document.createElement('input');
+  aInput.type = 'text';
+  aInput.placeholder = 'Answer';
+  aInput.value = kq.answer;
+  aInput.addEventListener('input', () => { kq.answer = aInput.value; markDirty(); });
+
+  const removeBtn = document.createElement('button');
+  removeBtn.className = 'icon-btn danger';
+  removeBtn.textContent = '✕';
+  removeBtn.addEventListener('click', () => {
+    entry.keyQuestions.splice(kqIdx, 1);
+    markDirty();
+    renderEntries();
+  });
+
+  row.appendChild(qInput);
+  row.appendChild(aInput);
+  row.appendChild(removeBtn);
+  return row;
+}
+
+addEntryBtn.addEventListener('click', () => {
+  vault.entries.unshift(newEntry());
+  markDirty();
+  renderEntries();
+});
+
+function markDirty() {
+  dirty = true;
+  saveStatusEl.textContent = 'Unsaved changes…';
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveVaultNow, 1200);
+}
+
+async function saveVaultNow() {
+  if (!dirty || !encKey) return;
+  try {
+    saveStatusEl.textContent = 'Saving…';
+    const { iv, blob } = await encryptVault(vault, encKey);
+    await Api.saveVault(iv, blob);
+    dirty = false;
+    saveStatusEl.textContent = 'Saved';
+    setTimeout(() => { if (!dirty) saveStatusEl.textContent = ''; }, 1500);
+  } catch (e) {
+    saveStatusEl.textContent = 'Save failed — check connection';
+  }
+}
+
+window.addEventListener('beforeunload', (e) => {
+  if (dirty) {
+    saveVaultNow();
+    e.preventDefault();
+    e.returnValue = '';
+  }
+});
+
+// On load, check if there's an active server session. Note: even if
+// the session cookie is valid, we still need the master password to
+// derive encKey and decrypt the vault, so we always show the login
+// form unless we already have encKey in memory (we never do, on a
+// fresh page load, since it's never persisted).
+(async () => {
+  const { loggedIn } = await Api.me();
+  if (loggedIn) {
+    // Server thinks we're logged in, but we lost encKey on refresh.
+    // Force re-entry of the master password before showing any data.
+    await Api.logout();
+  }
+})();

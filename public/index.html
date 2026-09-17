@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PassVault — Your Password Book</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div id="auth-view" class="auth-view">
+  <div class="auth-card">
+    <h1>🔐 PassVault</h1>
+    <p class="tagline">Your personal, self-hosted password book.</p>
+    <h2 id="auth-title">Log in</h2>
+    <form id="auth-form">
+      <label for="username">Username</label>
+      <input id="username" type="text" autocomplete="username" required>
+      <label for="master-password">Master password</label>
+      <input id="master-password" type="password" autocomplete="current-password" required>
+      <p class="hint">This master password encrypts everything. There is no "forgot password" — if you lose it, your vault cannot be recovered by anyone, including you hosting the server.</p>
+      <div id="auth-error" class="error"></div>
+      <button id="auth-submit" type="submit">Log in</button>
+    </form>
+    <button id="mode-toggle" class="link-btn">Need an account? Register</button>
+  </div>
+</div>
+
+<div id="vault-view" class="vault-view hidden">
+  <header class="topbar">
+    <div class="brand">🔐 PassVault</div>
+    <div class="topbar-right">
+      <span id="save-status" class="save-status"></span>
+      <span>Signed in as <strong id="current-user"></strong></span>
+      <button id="logout" class="secondary-btn">Log out</button>
+    </div>
+  </header>
+
+  <main class="content">
+    <div class="content-toolbar">
+      <button id="add-entry" class="primary-btn">+ Add email address</button>
+    </div>
+    <div id="entries"></div>
+  </main>
+</div>
+
+<script src="js/crypto.js"></script>
+<script src="js/api.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
