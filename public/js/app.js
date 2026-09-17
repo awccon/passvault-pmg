@@ -1,4 +1,9 @@
-const { deriveAuthProof, deriveEncKey, encryptVault, decryptVault, randomSaltB64 } = window.PassVaultCrypto;
+const PVCrypto = window.PassVaultCrypto;
+const deriveAuthProofFn = PVCrypto.deriveAuthProof;
+const deriveEncKeyFn = PVCrypto.deriveEncKey;
+const encryptVaultFn = PVCrypto.encryptVault;
+const decryptVaultFn = PVCrypto.decryptVault;
+const randomSaltB64Fn = PVCrypto.randomSaltB64;
 
 let encKey = null;       // lives only in memory, cleared on logout/refresh
 let vault = { entries: [] };
@@ -40,15 +45,15 @@ authForm.addEventListener('submit', async (e) => {
   }
   try {
     if (mode === 'register') {
-      const salt = randomSaltB64();
-      const authProof = await deriveAuthProof(password, salt);
+      const salt = randomSaltB64Fn();
+      const authProof = await deriveAuthProofFn(password, salt);
       await Api.register(username, salt, authProof);
-      encKey = await deriveEncKey(password, salt);
+      encKey = await deriveEncKeyFn(password, salt);
     } else {
       const { salt } = await Api.getSalt(username);
-      const authProof = await deriveAuthProof(password, salt);
+      const authProof = await deriveAuthProofFn(password, salt);
       await Api.login(username, authProof);
-      encKey = await deriveEncKey(password, salt);
+      encKey = await deriveEncKeyFn(password, salt);
     }
     passwordInput.value = '';
     await enterVault(username);
@@ -71,7 +76,7 @@ async function enterVault(username) {
   const stored = await Api.getVault();
   if (stored.blob) {
     try {
-      vault = await decryptVault(stored, encKey);
+      vault = await decryptVaultFn(stored, encKey);
     } catch (e) {
       authError.textContent = 'Could not decrypt vault — wrong master password?';
       encKey = null;
@@ -288,7 +293,7 @@ async function saveVaultNow() {
   if (!dirty || !encKey) return;
   try {
     saveStatusEl.textContent = 'Saving…';
-    const { iv, blob } = await encryptVault(vault, encKey);
+    const { iv, blob } = await encryptVaultFn(vault, encKey);
     await Api.saveVault(iv, blob);
     dirty = false;
     saveStatusEl.textContent = 'Saved';
