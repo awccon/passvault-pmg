@@ -29,7 +29,7 @@ and decrypted in your browser.
 ## Running it locally
 
 Requires Node.js 18+.
-
+.
 ```bash
 cd passvault
 npm install
