@@ -84,7 +84,7 @@ button { cursor: pointer; font-family: inherit; }
   position: sticky; top: 0; z-index: 5;
 }
 .brand { font-weight: 700; font-size: 16px; margin: 0; }
-.topbar-right { display: flex; align-items: center; gap: 14px; font-size: 13px; color: var(--muted); }
+.topbar-right { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 10px; font-size: 13px; color: var(--muted); }
 .save-status { font-size: 12px; color: var(--accent); min-width: 90px; text-align: right; }
 
 .tabbar {
@@ -289,11 +289,17 @@ button { cursor: pointer; font-family: inherit; }
 .admin-activity-time { color: var(--muted); font-size: 12px; flex-shrink: 0; white-space: nowrap; }
 
 @media (max-width: 480px) {
-  .topbar { flex-direction: column; align-items: flex-start; gap: 8px; }
+  /* A sticky header that wraps to 4+ rows eats most of a phone screen
+     while scrolling, so give up sticky here — the tabbar already isn't
+     sticky either, so this keeps the two consistent. */
+  .topbar { position: static; flex-direction: column; align-items: flex-start; gap: 8px; }
+  .topbar-right { justify-content: flex-start; width: 100%; }
+  .save-status { min-width: 0; text-align: left; }
   .pw-row, .kq-row { flex-wrap: wrap; }
   .budget-summary { grid-template-columns: 1fr; }
   .expense-row { flex-wrap: wrap; }
-  .expense-date, .expense-category, .expense-amount { width: auto; flex: 1 1 120px; }
+  .expense-date, .expense-category { width: auto; flex: 1 1 120px; }
+  .expense-amount { width: auto; flex: 0 1 110px; }
   .expense-description { flex: 1 1 100%; order: 5; }
   .chat-message { max-width: 88%; }
   .generator-checkboxes { grid-template-columns: 1fr; }

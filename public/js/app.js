@@ -47,6 +47,16 @@ const cpCancelBtn = document.getElementById('cp-cancel');
 const cpStrengthEl = document.getElementById('cp-strength');
 const cpStrengthFill = document.getElementById('cp-strength-fill');
 const cpStrengthLabel = document.getElementById('cp-strength-label');
+const backupBtn = document.getElementById('backup-btn');
+const restoreBtn = document.getElementById('restore-btn');
+const restoreFileInput = document.getElementById('restore-file-input');
+const restoreDialog = document.getElementById('restore-dialog');
+const restoreForm = document.getElementById('restore-form');
+const restoreFileInfoEl = document.getElementById('restore-file-info');
+const restorePasswordInput = document.getElementById('restore-password');
+const restoreError = document.getElementById('restore-error');
+const restoreSubmitBtn = document.getElementById('restore-submit');
+const restoreCancelBtn = document.getElementById('restore-cancel');
 const tabVaultBtn = document.getElementById('tab-vault');
 const tabBudgetBtn = document.getElementById('tab-budget');
 const tabChatBtn = document.getElementById('tab-chat');
@@ -82,6 +92,7 @@ let chatLoaded = false;
 let chatPollTimer = null;
 
 let isAdmin = false;
+let pendingRestore = null; // parsed+validated backup file, waiting on the password prompt
 
 // Shared by the standalone generator panel and each row's quick-generate
 // button, so both honor whatever length/character settings were last set.
@@ -318,6 +329,134 @@ changePasswordForm.addEventListener('submit', async (e) => {
     cpError.textContent = err.message || 'Something went wrong.';
   } finally {
     cpSubmitBtn.disabled = false;
+  }
+});
+
+// --- Backup / Restore ---
+// A backup file holds the vault in the exact same encrypted form the
+// server stores (salt + iv + AES-256-GCM blob) — never plaintext. That
+// also means it's tamper-evident: any edit to the file breaks GCM's
+// authentication tag, so a corrupted or modified backup fails to
+// decrypt cleanly on restore instead of silently loading bad data.
+const BACKUP_APP_ID = 'passvault';
+const BACKUP_VERSION = 1;
+
+function downloadJSON(obj, filename) {
+  const blob = new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+backupBtn.addEventListener('click', async () => {
+  try {
+    clearTimeout(saveTimer);
+    if (dirty) await saveVaultNow(); // back up exactly what's saved
+    const username = currentUserEl.textContent;
+    const { salt } = await Api.getSalt(username);
+    const { iv, blob } = await encryptVaultFn(vault, encKey);
+    const backupObj = {
+      app: BACKUP_APP_ID,
+      version: BACKUP_VERSION,
+      username,
+      exportedAt: new Date().toISOString(),
+      salt,
+      iv,
+      blob
+    };
+    const dateStr = new Date().toISOString().slice(0, 10);
+    downloadJSON(backupObj, 'passvault-backup-' + username + '-' + dateStr + '.json');
+    announce('Vault backed up.');
+  } catch (err) {
+    announce(err.message || 'Backup failed.');
+  }
+});
+
+restoreBtn.addEventListener('click', () => {
+  restoreFileInput.click();
+});
+
+restoreFileInput.addEventListener('change', async () => {
+  const file = restoreFileInput.files[0];
+  restoreFileInput.value = ''; // allow re-selecting the same file later
+  if (!file) return;
+
+  let parsed;
+  try {
+    const text = await file.text();
+    parsed = JSON.parse(text);
+  } catch (e) {
+    alert('That file isn\'t readable JSON — is it a PassVault backup?');
+    return;
+  }
+  if (parsed.app !== BACKUP_APP_ID || parsed.version !== BACKUP_VERSION || !parsed.salt || !parsed.iv || !parsed.blob) {
+    alert('That doesn\'t look like a PassVault backup file.');
+    return;
+  }
+
+  pendingRestore = parsed;
+  restoreForm.reset();
+  restoreError.textContent = '';
+  restoreSubmitBtn.disabled = false;
+  const info = 'Backup for "' + parsed.username + '"' +
+    (parsed.exportedAt ? ', exported ' + new Date(parsed.exportedAt).toLocaleString() : '') + '.';
+  restoreFileInfoEl.textContent = info;
+  restoreDialog.showModal();
+  restorePasswordInput.focus();
+});
+
+restoreCancelBtn.addEventListener('click', () => {
+  restoreDialog.close();
+  pendingRestore = null;
+});
+
+restoreForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  restoreError.textContent = '';
+  if (!pendingRestore) return;
+  const password = restorePasswordInput.value;
+  restoreSubmitBtn.disabled = true;
+  try {
+    const restoreEncKey = await deriveEncKeyFn(password, pendingRestore.salt);
+    let restoredVault;
+    try {
+      restoredVault = await decryptVaultFn(pendingRestore, restoreEncKey);
+    } catch (err) {
+      restoreError.textContent = 'Incorrect password, or this backup file is corrupted.';
+      restoreSubmitBtn.disabled = false;
+      return;
+    }
+    if (!restoredVault.entries) restoredVault.entries = [];
+    if (!restoredVault.budget) restoredVault.budget = { expenses: [] };
+    if (!restoredVault.budget.expenses) restoredVault.budget.expenses = [];
+
+    const currentCount = vault.entries.length + ' entries, ' + vault.budget.expenses.length + ' expenses';
+    const backupCount = restoredVault.entries.length + ' entries, ' + restoredVault.budget.expenses.length + ' expenses';
+    const proceed = confirm(
+      'Replace your current vault (' + currentCount + ') with this backup (' + backupCount + ')? This cannot be undone.'
+    );
+    if (!proceed) {
+      restoreSubmitBtn.disabled = false;
+      return;
+    }
+
+    vault = restoredVault;
+    dirty = true;
+    await saveVaultNow();
+    renderEntries();
+    renderExpenses();
+    pendingRestore = null;
+    restoreDialog.close();
+    announce('Vault restored successfully.');
+  } catch (err) {
+    restoreError.textContent = err.message || 'Something went wrong.';
+  } finally {
+    restoreSubmitBtn.disabled = false;
   }
 });
 

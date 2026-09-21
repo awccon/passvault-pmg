@@ -41,6 +41,9 @@
     <div class="topbar-right">
       <span id="save-status" class="save-status" role="status" aria-live="polite"></span>
       <span>Signed in as <strong id="current-user"></strong></span>
+      <button id="backup-btn" class="secondary-btn" type="button">⬇ Backup</button>
+      <button id="restore-btn" class="secondary-btn" type="button">⬆ Restore</button>
+      <input id="restore-file-input" type="file" accept=".json,application/json" class="hidden">
       <button id="change-password-btn" class="secondary-btn" type="button">🔑 Change password</button>
       <button id="logout" class="secondary-btn">Log out</button>
     </div>
@@ -163,6 +166,24 @@
       <div class="cp-actions">
         <button type="button" id="cp-cancel" class="secondary-btn">Cancel</button>
         <button type="submit" id="cp-submit" class="primary-btn">Change password</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="restore-dialog" class="cp-dialog">
+    <form id="restore-form">
+      <h2>Restore backup</h2>
+      <p class="hint">Restoring replaces everything currently in your vault (passwords and budget) with what's in this backup file. This can't be undone.</p>
+      <p id="restore-file-info" class="hint"></p>
+
+      <label for="restore-password">Master password for this backup</label>
+      <input id="restore-password" type="password" autocomplete="off" required>
+
+      <div id="restore-error" class="error" role="alert"></div>
+
+      <div class="cp-actions">
+        <button type="button" id="restore-cancel" class="secondary-btn">Cancel</button>
+        <button type="submit" id="restore-submit" class="primary-btn">Restore and replace</button>
       </div>
     </form>
   </dialog>
