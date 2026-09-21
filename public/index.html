@@ -22,7 +22,10 @@
         <p class="hint">Ask whoever runs this server for an invite code — registration isn't open to everyone.</p>
       </div>
       <label for="master-password">Master password</label>
-      <input id="master-password" type="password" autocomplete="current-password" required>
+      <div class="password-field">
+        <input id="master-password" type="password" autocomplete="current-password" required>
+        <button type="button" id="master-password-toggle" class="password-toggle-btn" aria-label="Show password" aria-pressed="false" title="Show/hide password">👁</button>
+      </div>
       <div id="pw-strength" class="pw-strength hidden" aria-live="polite">
         <div class="pw-strength-bar"><div id="pw-strength-fill" class="pw-strength-fill"></div></div>
         <span id="pw-strength-label" class="pw-strength-label"></span>

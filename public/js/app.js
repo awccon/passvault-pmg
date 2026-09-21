@@ -17,6 +17,7 @@ const authForm = document.getElementById('auth-form');
 const authError = document.getElementById('auth-error');
 const usernameInput = document.getElementById('username');
 const passwordInput = document.getElementById('master-password');
+const masterPasswordToggle = document.getElementById('master-password-toggle');
 const inviteCodeField = document.getElementById('invite-code-field');
 const inviteCodeInput = document.getElementById('invite-code');
 const modeToggle = document.getElementById('mode-toggle');
@@ -150,6 +151,9 @@ modeToggle.addEventListener('click', () => {
   modeToggle.textContent = mode === 'login' ? "Need an account? Register" : 'Already have an account? Log in';
   authError.textContent = '';
   pwStrengthEl.classList.add('hidden');
+  passwordInput.type = 'password';
+  masterPasswordToggle.setAttribute('aria-label', 'Show password');
+  masterPasswordToggle.setAttribute('aria-pressed', 'false');
   inviteCodeField.classList.toggle('hidden', mode !== 'register');
   inviteCodeInput.required = mode === 'register';
   if (mode !== 'register') inviteCodeInput.value = '';
@@ -182,6 +186,13 @@ passwordInput.addEventListener('input', () => {
   updateStrengthMeter(passwordInput.value, pwStrengthEl, pwStrengthFill, pwStrengthLabel);
 });
 
+masterPasswordToggle.addEventListener('click', () => {
+  const nowVisible = passwordInput.type === 'password';
+  passwordInput.type = nowVisible ? 'text' : 'password';
+  masterPasswordToggle.setAttribute('aria-label', nowVisible ? 'Hide password' : 'Show password');
+  masterPasswordToggle.setAttribute('aria-pressed', String(nowVisible));
+});
+
 authForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   authError.textContent = '';
@@ -209,6 +220,9 @@ authForm.addEventListener('submit', async (e) => {
       encKey = await deriveEncKeyFn(password, salt);
     }
     passwordInput.value = '';
+    passwordInput.type = 'password';
+    masterPasswordToggle.setAttribute('aria-label', 'Show password');
+    masterPasswordToggle.setAttribute('aria-pressed', 'false');
     inviteCodeInput.value = '';
     pwStrengthEl.classList.add('hidden');
     await enterVault(username);
@@ -260,6 +274,9 @@ logoutBtn.addEventListener('click', async () => {
   vaultView.classList.add('hidden');
   authView.classList.remove('hidden');
   authForm.reset();
+  passwordInput.type = 'password';
+  masterPasswordToggle.setAttribute('aria-label', 'Show password');
+  masterPasswordToggle.setAttribute('aria-pressed', 'false');
 });
 
 function resetChangePasswordForm() {
