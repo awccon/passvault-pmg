@@ -7,7 +7,7 @@ const randomSaltB64Fn = PVCrypto.randomSaltB64;
 const generatePasswordFn = PVCrypto.generatePassword;
 
 let encKey = null;       // lives only in memory, cleared on logout/refresh
-let vault = { entries: [], budget: { expenses: [] } };
+let vault = { entries: [], budget: { expenses: [], incomes: [] } };
 let saveTimer = null;
 let dirty = false;
 
@@ -72,7 +72,11 @@ const adminActivityEl = document.getElementById('admin-activity');
 const addExpenseBtn = document.getElementById('add-expense');
 const expensesEl = document.getElementById('expenses');
 const budgetTotalEl = document.getElementById('budget-total');
-const budgetBreakdownEl = document.getElementById('budget-breakdown');
+const addIncomeBtn = document.getElementById('add-income');
+const incomesEl = document.getElementById('incomes');
+const budgetIncomeTotalEl = document.getElementById('budget-income-total');
+const budgetNetEl = document.getElementById('budget-net');
+const budgetChartEl = document.getElementById('budget-chart');
 const chatMessagesEl = document.getElementById('chat-messages');
 const chatForm = document.getElementById('chat-form');
 const chatInput = document.getElementById('chat-input');
@@ -245,7 +249,7 @@ logoutBtn.addEventListener('click', async () => {
   if (dirty) await saveVaultNow(); // flush any pending debounced save first
   await Api.logout();
   encKey = null;
-  vault = { entries: [], budget: { expenses: [] } };
+  vault = { entries: [], budget: { expenses: [], incomes: [] } };
   stopChatPolling();
   chatMessages = [];
   lastMessageTime = null;
@@ -432,8 +436,9 @@ restoreForm.addEventListener('submit', async (e) => {
       return;
     }
     if (!restoredVault.entries) restoredVault.entries = [];
-    if (!restoredVault.budget) restoredVault.budget = { expenses: [] };
+    if (!restoredVault.budget) restoredVault.budget = { expenses: [], incomes: [] };
     if (!restoredVault.budget.expenses) restoredVault.budget.expenses = [];
+    if (!restoredVault.budget.incomes) restoredVault.budget.incomes = [];
 
     const currentCount = vault.entries.length + ' entries, ' + vault.budget.expenses.length + ' expenses';
     const backupCount = restoredVault.entries.length + ' entries, ' + restoredVault.budget.expenses.length + ' expenses';
@@ -475,14 +480,16 @@ async function enterVault(username) {
     vault = { entries: [] };
   }
   if (!vault.entries) vault.entries = [];
-  if (!vault.budget) vault.budget = { expenses: [] };
+  if (!vault.budget) vault.budget = { expenses: [], incomes: [] };
   if (!vault.budget.expenses) vault.budget.expenses = [];
+  if (!vault.budget.incomes) vault.budget.incomes = [];
   tabAdminBtn.classList.toggle('hidden', !isAdmin);
   authView.classList.add('hidden');
   vaultView.classList.remove('hidden');
   switchTab('vault');
   renderEntries();
   renderExpenses();
+  renderIncomes();
 }
 
 function newEntry() {
@@ -778,6 +785,16 @@ function newExpense() {
   };
 }
 
+function newIncome() {
+  return {
+    id: crypto.randomUUID(),
+    date: new Date().toISOString().slice(0, 10),
+    source: '',
+    description: '',
+    amount: 0
+  };
+}
+
 function renderExpenses() {
   expensesEl.innerHTML = '';
   const expenses = vault.budget.expenses;
@@ -794,40 +811,84 @@ function renderExpenses() {
   renderBudgetSummary();
 }
 
+function renderIncomes() {
+  incomesEl.innerHTML = '';
+  const incomes = vault.budget.incomes;
+  if (incomes.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'expenses-empty';
+    empty.textContent = 'No income yet. Click "+ Add income" to start tracking.';
+    incomesEl.appendChild(empty);
+  } else {
+    incomes.forEach((income, idx) => {
+      incomesEl.appendChild(renderIncomeRow(income, idx));
+    });
+  }
+  renderBudgetSummary();
+}
+
 function renderBudgetSummary() {
   const expenses = vault.budget.expenses;
-  const total = expenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
-  budgetTotalEl.textContent = total.toFixed(2);
+  const incomes = vault.budget.incomes;
+  const expenseTotal = expenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+  const incomeTotal = incomes.reduce((sum, i) => sum + (Number(i.amount) || 0), 0);
+  const net = incomeTotal - expenseTotal;
 
+  budgetTotalEl.textContent = expenseTotal.toFixed(2);
+  budgetIncomeTotalEl.textContent = incomeTotal.toFixed(2);
+  budgetNetEl.textContent = (net >= 0 ? '' : '-') + Math.abs(net).toFixed(2);
+  budgetNetEl.classList.toggle('positive', net > 0);
+  budgetNetEl.classList.toggle('negative', net < 0);
+
+  renderExpenseChart(expenses);
+}
+
+// A simple single-hue bar chart (magnitude comparison, not identity — every
+// bar shares one color and the category name is its own direct label, per
+// dataviz guidance for comparing a nominal set of categories).
+function renderExpenseChart(expenses) {
   const byCategory = new Map();
   expenses.forEach(e => {
     const key = (e.category || '').trim() || 'Uncategorized';
     byCategory.set(key, (byCategory.get(key) || 0) + (Number(e.amount) || 0));
   });
 
-  budgetBreakdownEl.innerHTML = '';
+  budgetChartEl.innerHTML = '';
   if (byCategory.size === 0) {
     const empty = document.createElement('div');
-    empty.className = 'breakdown-empty';
-    empty.textContent = 'Nothing to break down yet.';
-    budgetBreakdownEl.appendChild(empty);
+    empty.className = 'chart-empty';
+    empty.textContent = 'Nothing to chart yet.';
+    budgetChartEl.appendChild(empty);
     return;
   }
-  [...byCategory.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .forEach(([category, amount]) => {
-      const row = document.createElement('div');
-      row.className = 'breakdown-row';
-      const catEl = document.createElement('span');
-      catEl.className = 'category';
-      catEl.textContent = category;
-      const amtEl = document.createElement('span');
-      amtEl.className = 'amount';
-      amtEl.textContent = amount.toFixed(2);
-      row.appendChild(catEl);
-      row.appendChild(amtEl);
-      budgetBreakdownEl.appendChild(row);
-    });
+  const sorted = [...byCategory.entries()].sort((a, b) => b[1] - a[1]);
+  const max = sorted[0][1] || 1;
+  sorted.forEach(([category, amount]) => {
+    const row = document.createElement('div');
+    row.className = 'chart-row';
+
+    const header = document.createElement('div');
+    header.className = 'chart-row-header';
+    const labelEl = document.createElement('span');
+    labelEl.className = 'chart-row-label';
+    labelEl.textContent = category;
+    const valueEl = document.createElement('span');
+    valueEl.className = 'chart-row-value';
+    valueEl.textContent = amount.toFixed(2);
+    header.appendChild(labelEl);
+    header.appendChild(valueEl);
+
+    const track = document.createElement('div');
+    track.className = 'chart-bar-track';
+    const fill = document.createElement('div');
+    fill.className = 'chart-bar-fill';
+    fill.style.width = Math.max((amount / max) * 100, 2) + '%';
+    track.appendChild(fill);
+
+    row.appendChild(header);
+    row.appendChild(track);
+    budgetChartEl.appendChild(row);
+  });
 }
 
 function renderExpenseRow(expense, idx) {
@@ -884,6 +945,7 @@ function renderExpenseRow(expense, idx) {
   removeBtn.title = 'Remove this expense';
   removeBtn.setAttribute('aria-label', 'Remove expense' + (expense.description ? ': ' + expense.description : ' ' + (idx + 1)));
   removeBtn.addEventListener('click', () => {
+    if (!confirm('Remove this expense? This cannot be undone.')) return;
     vault.budget.expenses.splice(idx, 1);
     markDirty();
     renderExpenses();
@@ -897,10 +959,80 @@ function renderExpenseRow(expense, idx) {
   return row;
 }
 
+function renderIncomeRow(income, idx) {
+  const row = document.createElement('div');
+  row.className = 'expense-row';
+
+  const dateInput = document.createElement('input');
+  dateInput.type = 'date';
+  dateInput.className = 'expense-date';
+  dateInput.setAttribute('aria-label', 'Income date');
+  dateInput.value = income.date || '';
+  dateInput.addEventListener('input', () => { income.date = dateInput.value; markDirty(); });
+
+  const sourceInput = document.createElement('input');
+  sourceInput.type = 'text';
+  sourceInput.className = 'expense-category';
+  sourceInput.placeholder = 'Source';
+  sourceInput.setAttribute('aria-label', 'Income source');
+  sourceInput.autocomplete = 'off';
+  sourceInput.value = income.source || '';
+  sourceInput.addEventListener('input', () => { income.source = sourceInput.value; markDirty(); });
+
+  const descInput = document.createElement('input');
+  descInput.type = 'text';
+  descInput.className = 'expense-description';
+  descInput.placeholder = 'Description';
+  descInput.setAttribute('aria-label', 'Income description');
+  descInput.autocomplete = 'off';
+  descInput.value = income.description || '';
+  descInput.addEventListener('input', () => { income.description = descInput.value; markDirty(); });
+
+  const amountInput = document.createElement('input');
+  amountInput.type = 'number';
+  amountInput.className = 'expense-amount';
+  amountInput.placeholder = '0.00';
+  amountInput.step = '0.01';
+  amountInput.min = '0';
+  amountInput.setAttribute('aria-label', 'Income amount');
+  amountInput.autocomplete = 'off';
+  amountInput.value = income.amount === 0 ? '' : income.amount;
+  amountInput.addEventListener('input', () => {
+    income.amount = parseFloat(amountInput.value) || 0;
+    markDirty();
+    renderBudgetSummary();
+  });
+
+  const removeBtn = document.createElement('button');
+  removeBtn.className = 'icon-btn danger';
+  removeBtn.textContent = '✕';
+  removeBtn.title = 'Remove this income';
+  removeBtn.setAttribute('aria-label', 'Remove income' + (income.description ? ': ' + income.description : ' ' + (idx + 1)));
+  removeBtn.addEventListener('click', () => {
+    if (!confirm('Remove this income entry? This cannot be undone.')) return;
+    vault.budget.incomes.splice(idx, 1);
+    markDirty();
+    renderIncomes();
+  });
+
+  row.appendChild(dateInput);
+  row.appendChild(sourceInput);
+  row.appendChild(descInput);
+  row.appendChild(amountInput);
+  row.appendChild(removeBtn);
+  return row;
+}
+
 addExpenseBtn.addEventListener('click', () => {
   vault.budget.expenses.unshift(newExpense());
   markDirty();
   renderExpenses();
+});
+
+addIncomeBtn.addEventListener('click', () => {
+  vault.budget.incomes.unshift(newIncome());
+  markDirty();
+  renderIncomes();
 });
 
 // --- Chat (shared, plain text — not part of the encrypted vault) ---

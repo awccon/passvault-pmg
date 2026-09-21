@@ -7,6 +7,7 @@
   --accent: #5b8cff;
   --accent-btn: #3562d1; /* darker than --accent: keeps white button text at 5.5:1 contrast (WCAG AA) */
   --danger: #ff6b6b;
+  --positive: #4fd17a; /* same green already used for "Strong" password strength; 8.1:1 on --card */
   --border: #2b3550;
   --focus-ring: #7fa8ff;
 }
@@ -184,8 +185,9 @@ button { cursor: pointer; font-family: inherit; }
 
 /* --- Budget --- */
 .budget-summary {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 18px;
+  display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;
 }
+.budget-summary-3 { grid-template-columns: repeat(3, 1fr); }
 .summary-card {
   background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px;
 }
@@ -194,11 +196,21 @@ button { cursor: pointer; font-family: inherit; }
   color: var(--muted); margin-bottom: 6px;
 }
 .summary-value { font-size: 26px; font-weight: 700; }
-.breakdown-list { display: flex; flex-direction: column; gap: 4px; max-height: 120px; overflow-y: auto; }
-.breakdown-row { display: flex; justify-content: space-between; font-size: 13px; }
-.breakdown-row .category { color: var(--text); }
-.breakdown-row .amount { color: var(--muted); }
-.breakdown-empty { font-size: 13px; color: var(--muted); }
+.summary-value.positive { color: var(--positive); }
+.summary-value.negative { color: var(--danger); }
+
+.budget-chart-card { margin-bottom: 18px; }
+.budget-chart { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
+.chart-row-header {
+  display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 4px; gap: 10px;
+}
+.chart-row-label { color: var(--text); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chart-row-value { color: var(--muted); font-variant-numeric: tabular-nums; flex-shrink: 0; }
+.chart-bar-track { height: 10px; border-radius: 5px; background: var(--card-2); overflow: hidden; }
+.chart-bar-fill { height: 100%; border-radius: 0 5px 5px 0; background: var(--accent); }
+.chart-empty { font-size: 13px; color: var(--muted); margin-top: 10px; }
+
+.budget-section { margin-bottom: 20px; }
 
 .expense-row {
   display: flex; gap: 8px; align-items: center; margin-bottom: 8px;

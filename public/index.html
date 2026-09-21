@@ -93,21 +93,39 @@
 
     <section id="budget-panel" class="panel hidden" role="tabpanel" aria-labelledby="tab-budget">
       <div class="content-toolbar">
+        <button id="add-income" class="primary-btn">+ Add income</button>
         <button id="add-expense" class="primary-btn">+ Add expense</button>
       </div>
 
-      <div class="budget-summary">
+      <div class="budget-summary budget-summary-3">
         <div class="summary-card">
-          <span class="summary-label">Total spent</span>
-          <span id="budget-total" class="summary-value">0.00</span>
+          <span class="summary-label">Total income</span>
+          <span id="budget-income-total" class="summary-value positive">0.00</span>
         </div>
-        <div class="summary-card summary-breakdown">
-          <span class="summary-label">By category</span>
-          <div id="budget-breakdown" class="breakdown-list"></div>
+        <div class="summary-card">
+          <span class="summary-label">Total expenses</span>
+          <span id="budget-total" class="summary-value negative">0.00</span>
+        </div>
+        <div class="summary-card">
+          <span class="summary-label">Net</span>
+          <span id="budget-net" class="summary-value">0.00</span>
         </div>
       </div>
 
-      <div id="expenses" class="expenses-list"></div>
+      <div class="summary-card budget-chart-card">
+        <span class="summary-label">Expenses by category</span>
+        <div id="budget-chart" class="budget-chart"></div>
+      </div>
+
+      <div class="budget-section">
+        <h2 class="sub-title">Income</h2>
+        <div id="incomes" class="expenses-list"></div>
+      </div>
+
+      <div class="budget-section">
+        <h2 class="sub-title">Expenses</h2>
+        <div id="expenses" class="expenses-list"></div>
+      </div>
     </section>
 
     <section id="chat-panel" class="panel hidden" role="tabpanel" aria-labelledby="tab-chat">
