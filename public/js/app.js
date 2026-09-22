@@ -99,6 +99,20 @@ let chatPollTimer = null;
 let isAdmin = false;
 let pendingRestore = null; // parsed+validated backup file, waiting on the password prompt
 
+// Password rows default to view-only (show/copy only); editing unlocks
+// the label/value fields plus generate/delete. Tracked by password id
+// (not array index, which shifts) so it survives renderEntries() full
+// rebuilds triggered by unrelated changes elsewhere in the vault.
+let editingPasswordIds = new Set();
+
+function ensurePasswordIds(entries) {
+  entries.forEach(entry => {
+    entry.passwords.forEach(pw => {
+      if (!pw.id) pw.id = crypto.randomUUID();
+    });
+  });
+}
+
 // Shared by the standalone generator panel and each row's quick-generate
 // button, so both honor whatever length/character settings were last set.
 let generatorOptions = { length: 20, upper: true, lower: true, numbers: true, symbols: true };
@@ -264,6 +278,7 @@ logoutBtn.addEventListener('click', async () => {
   await Api.logout();
   encKey = null;
   vault = { entries: [], budget: { expenses: [], incomes: [] } };
+  editingPasswordIds.clear();
   stopChatPolling();
   chatMessages = [];
   lastMessageTime = null;
@@ -453,6 +468,7 @@ restoreForm.addEventListener('submit', async (e) => {
       return;
     }
     if (!restoredVault.entries) restoredVault.entries = [];
+    ensurePasswordIds(restoredVault.entries);
     if (!restoredVault.budget) restoredVault.budget = { expenses: [], incomes: [] };
     if (!restoredVault.budget.expenses) restoredVault.budget.expenses = [];
     if (!restoredVault.budget.incomes) restoredVault.budget.incomes = [];
@@ -468,6 +484,7 @@ restoreForm.addEventListener('submit', async (e) => {
     }
 
     vault = restoredVault;
+    editingPasswordIds.clear();
     dirty = true;
     await saveVaultNow();
     renderEntries();
@@ -497,6 +514,7 @@ async function enterVault(username) {
     vault = { entries: [] };
   }
   if (!vault.entries) vault.entries = [];
+  ensurePasswordIds(vault.entries);
   if (!vault.budget) vault.budget = { expenses: [], incomes: [] };
   if (!vault.budget.expenses) vault.budget.expenses = [];
   if (!vault.budget.incomes) vault.budget.incomes = [];
@@ -514,7 +532,7 @@ function newEntry() {
     id: crypto.randomUUID(),
     email: '',
     username: '',
-    passwords: [{ label: 'Password 1', value: '' }],
+    passwords: [{ id: crypto.randomUUID(), label: 'Password 1', value: '' }],
     keyQuestions: []
   };
 }
@@ -592,7 +610,9 @@ function renderEntry(entry, idx) {
   addPwBtn.textContent = '+ Add password';
   addPwBtn.addEventListener('click', () => {
     if (entry.passwords.length >= 5) return;
-    entry.passwords.push({ label: 'Password ' + (entry.passwords.length + 1), value: '' });
+    const newPw = { id: crypto.randomUUID(), label: 'Password ' + (entry.passwords.length + 1), value: '' };
+    entry.passwords.push(newPw);
+    editingPasswordIds.add(newPw.id);
     markDirty();
     renderEntries();
   });
@@ -643,12 +663,14 @@ function clearClipboardAfter(expectedValue, delayMs) {
 function renderPasswordRow(entry, pw, pwIdx) {
   const row = document.createElement('div');
   row.className = 'pw-row';
+  const isEditing = editingPasswordIds.has(pw.id);
 
   const labelInput = document.createElement('input');
   labelInput.type = 'text';
   labelInput.className = 'pw-label';
   labelInput.setAttribute('aria-label', 'Label for password ' + (pwIdx + 1));
   labelInput.autocomplete = 'off';
+  labelInput.readOnly = !isEditing;
   labelInput.value = pw.label || ('Password ' + (pwIdx + 1));
   labelInput.addEventListener('input', () => { pw.label = labelInput.value; markDirty(); });
 
@@ -657,6 +679,7 @@ function renderPasswordRow(entry, pw, pwIdx) {
   valueInput.className = 'pw-value';
   valueInput.setAttribute('aria-label', (pw.label || ('Password ' + (pwIdx + 1))) + ' value');
   valueInput.autocomplete = 'off';
+  valueInput.readOnly = !isEditing;
   valueInput.value = pw.value;
   valueInput.placeholder = 'Password';
   valueInput.addEventListener('input', () => { pw.value = valueInput.value; markDirty(); });
@@ -667,6 +690,9 @@ function renderPasswordRow(entry, pw, pwIdx) {
   generateBtn.title = 'Generate a random password';
   generateBtn.setAttribute('aria-label', 'Generate a random password for ' + (pw.label || ('password ' + (pwIdx + 1))));
   generateBtn.addEventListener('click', () => {
+    if (pw.value) {
+      if (!confirm('Are you sure you want to generate a new password? This will replace the existing password.')) return;
+    }
     const generated = generatePasswordFn(generatorOptions.length, generatorOptions);
     if (!generated) {
       announce('Select at least one character type in the password generator first.');
@@ -724,6 +750,17 @@ function renderPasswordRow(entry, pw, pwIdx) {
     clearClipboardAfter(copiedValue, 20000);
   });
 
+  const editToggleBtn = document.createElement('button');
+  editToggleBtn.className = 'icon-btn';
+  editToggleBtn.textContent = isEditing ? '✓' : '✏️';
+  editToggleBtn.title = isEditing ? 'Done editing' : 'Edit';
+  editToggleBtn.setAttribute('aria-label', (isEditing ? 'Done editing ' : 'Edit ') + (pw.label || ('password ' + (pwIdx + 1))));
+  editToggleBtn.setAttribute('aria-pressed', String(isEditing));
+  editToggleBtn.addEventListener('click', () => {
+    if (isEditing) editingPasswordIds.delete(pw.id); else editingPasswordIds.add(pw.id);
+    renderEntries();
+  });
+
   const removeBtn = document.createElement('button');
   removeBtn.className = 'icon-btn danger';
   removeBtn.textContent = '✕';
@@ -732,6 +769,7 @@ function renderPasswordRow(entry, pw, pwIdx) {
   removeBtn.addEventListener('click', () => {
     const label = pw.label || ('Password ' + (pwIdx + 1));
     if (!confirm('Remove "' + label + '"? This cannot be undone.')) return;
+    editingPasswordIds.delete(pw.id);
     entry.passwords.splice(pwIdx, 1);
     markDirty();
     renderEntries();
@@ -739,10 +777,11 @@ function renderPasswordRow(entry, pw, pwIdx) {
 
   row.appendChild(labelInput);
   row.appendChild(valueInput);
-  row.appendChild(generateBtn);
+  if (isEditing) row.appendChild(generateBtn);
   row.appendChild(toggleBtn);
   row.appendChild(copyBtn);
-  row.appendChild(removeBtn);
+  row.appendChild(editToggleBtn);
+  if (isEditing) row.appendChild(removeBtn);
   return row;
 }
 
@@ -785,7 +824,9 @@ function renderKeyQuestionRow(entry, kq, kqIdx) {
 }
 
 addEntryBtn.addEventListener('click', () => {
-  vault.entries.unshift(newEntry());
+  const entry = newEntry();
+  editingPasswordIds.add(entry.passwords[0].id);
+  vault.entries.unshift(entry);
   markDirty();
   renderEntries();
 });

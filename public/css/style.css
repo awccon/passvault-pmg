@@ -181,6 +181,9 @@ button { cursor: pointer; font-family: inherit; }
   min-width: 40px; min-height: 40px; /* comfortable tap target on touch screens */
 }
 .icon-btn.danger { color: var(--danger); border-color: rgba(255,107,107,0.3); }
+.icon-btn[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
+
+.pw-label[readonly], .pw-value[readonly] { color: var(--muted); cursor: default; }
 
 /* --- Password strength meter (register mode) --- */
 .pw-strength { margin: 8px 0 4px; }
