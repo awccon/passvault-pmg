@@ -7,9 +7,15 @@
 // as-is: nothing sensitive is ever written to Cache Storage, and the
 // encryption key still only ever lives in page memory.
 //
-// Bump CACHE_NAME whenever shell assets change, so clients pick up the
-// new versions instead of serving stale cached ones indefinitely.
-const CACHE_NAME = 'passvault-shell-v1';
+// Bump CACHE_NAME whenever shell assets change, so browsers already
+// running the old service worker are forced onto a fresh cache instead
+// of an old JS file paired with a new HTML file (a real bug this hit
+// once already: renamed element ids threw "Cannot read properties of
+// null" because a cached pre-rename app.js ran against post-rename
+// HTML). Static assets below also use stale-while-revalidate, not pure
+// cache-first, specifically so a forgotten version bump self-heals on
+// the next load instead of leaving people stuck indefinitely.
+const CACHE_NAME = 'passvault-shell-v2';
 const SHELL_ASSETS = [
   '/',
   '/index.html',
@@ -61,9 +67,21 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Cache-first for static shell assets (js/css/icons) — they rarely
-  // change, and CACHE_NAME versioning handles invalidation on deploy.
+  // Stale-while-revalidate for static shell assets (js/css/icons):
+  // serve the cached copy immediately if there is one (fast), but
+  // always also fetch fresh in the background and update the cache —
+  // so the *next* load already has new assets even if CACHE_NAME
+  // didn't change. Falls back to the cache if the network fetch fails
+  // (e.g. offline).
   event.respondWith(
-    caches.match(event.request).then((cached) => cached || fetch(event.request))
+    caches.match(event.request).then((cached) => {
+      const network = fetch(event.request)
+        .then((response) => {
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, response.clone()));
+          return response;
+        })
+        .catch(() => cached);
+      return cached || network;
+    })
   );
 });
