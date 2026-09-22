@@ -298,6 +298,90 @@ button { cursor: pointer; font-family: inherit; }
 .expense-amount { width: 100px; flex-shrink: 0; text-align: right; }
 .expenses-empty { color: var(--muted); font-size: 14px; padding: 12px 0; }
 
+/* --- To-Do --- */
+.todo-row {
+  display: flex; gap: 10px; align-items: center; margin-bottom: 8px;
+  background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px;
+}
+.todo-row.done { opacity: 0.55; }
+.todo-row.done .todo-text { text-decoration: line-through; }
+.todo-checkbox { width: 20px; height: 20px; flex-shrink: 0; accent-color: var(--accent); }
+.todo-text {
+  flex: 1; min-width: 0; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--card-2); color: var(--text); font-size: 16px;
+}
+.todo-due {
+  width: 148px; flex-shrink: 0; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--card-2); color: var(--text); font-size: 16px;
+}
+
+/* --- Goals --- */
+.goal-row {
+  display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px;
+  background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 12px;
+}
+.goal-row-top { display: flex; gap: 8px; align-items: center; }
+.goal-title { flex: 1; min-width: 0; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--card-2); color: var(--text); font-size: 16px; font-weight: 600; }
+.goal-description { padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--card-2); color: var(--text); font-size: 14px; }
+.goal-row-meta { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.goal-target-date { padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--card-2); color: var(--text); font-size: 14px; }
+.goal-target-toggle { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+.goal-progress-wrap { margin-top: 2px; }
+.goal-progress-nums { display: flex; align-items: center; gap: 8px; font-size: 14px; margin-bottom: 6px; }
+.goal-progress-nums input {
+  width: 90px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--card-2); color: var(--text); font-size: 16px;
+}
+.goal-progress-track { height: 10px; }
+.goal-status {
+  padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--card-2); color: var(--text); font-size: 14px;
+}
+
+/* --- Addresses --- */
+.address-row {
+  display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px;
+  background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 12px;
+}
+.address-row-top { display: flex; gap: 8px; align-items: center; }
+.address-place { flex: 1; min-width: 0; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--card-2); color: var(--text); font-size: 16px; font-weight: 600; }
+.address-street { padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--card-2); color: var(--text); font-size: 14px; }
+.address-row-meta { display: flex; gap: 8px; flex-wrap: wrap; }
+.address-state, .address-category, .address-date-used {
+  flex: 1 1 120px; min-width: 0; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--card-2); color: var(--text); font-size: 14px;
+}
+.address-row-phone { display: flex; align-items: center; gap: 8px; }
+.address-phone { flex: 1; min-width: 0; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--card-2); color: var(--text); font-size: 16px; }
+.address-phone-link { font-size: 18px; text-decoration: none; flex-shrink: 0; }
+.address-status {
+  padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--card-2); color: var(--text); font-size: 14px; align-self: flex-start;
+}
+
+/* --- Notes --- */
+.notes-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px;
+}
+.note-card {
+  display: flex; flex-direction: column; gap: 8px; border-radius: 12px; padding: 12px;
+  border: 1px solid var(--border); color: #1a1a1a;
+}
+.note-card-top { display: flex; gap: 8px; align-items: center; }
+.note-title {
+  flex: 1; min-width: 0; padding: 6px 8px; border-radius: 6px; border: none;
+  background: rgba(255,255,255,0.5); color: #1a1a1a; font-size: 15px; font-weight: 600;
+}
+.note-body {
+  min-height: 100px; padding: 8px; border-radius: 6px; border: none; resize: vertical;
+  background: rgba(255,255,255,0.5); color: #1a1a1a; font-size: 14px; font-family: inherit;
+}
+.note-color-swatches { display: flex; gap: 6px; }
+.note-color-swatch {
+  width: 20px; height: 20px; border-radius: 50%; border: 2px solid rgba(0,0,0,0.15); cursor: pointer; padding: 0;
+}
+.note-color-swatch.selected { border-color: #1a1a1a; }
+
 /* --- Chat --- */
 .chat-messages {
   height: 60vh; min-height: 280px; overflow-y: auto;
@@ -396,4 +480,8 @@ button { cursor: pointer; font-family: inherit; }
   .chat-message { max-width: 88%; }
   .generator-checkboxes { grid-template-columns: 1fr; }
   .admin-user-row { flex-wrap: wrap; }
+  .todo-row { flex-wrap: wrap; }
+  .todo-text { flex: 1 1 100%; order: 1; }
+  .todo-due { flex: 1; order: 2; }
+  .notes-grid { grid-template-columns: 1fr; }
 }

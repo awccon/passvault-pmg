@@ -7,7 +7,7 @@ const randomSaltB64Fn = PVCrypto.randomSaltB64;
 const generatePasswordFn = PVCrypto.generatePassword;
 
 let encKey = null;       // lives only in memory, cleared on logout/refresh
-let vault = { entries: [], budget: { expenses: [], incomes: [] } };
+let vault = { entries: [], budget: { expenses: [], incomes: [] }, notes: [], addresses: [], goals: [], todos: [] };
 let saveTimer = null;
 let dirty = false;
 
@@ -66,11 +66,11 @@ const restoreCancelBtn = document.getElementById('restore-cancel');
 const tabVaultBtn = document.getElementById('tab-vault');
 const tabBudgetBtn = document.getElementById('tab-budget');
 const tabChatBtn = document.getElementById('tab-chat');
-const tabSettingsBtn = document.getElementById('tab-settings');
+const tabMoreBtn = document.getElementById('tab-more');
 const vaultPanel = document.getElementById('vault-panel');
 const budgetPanel = document.getElementById('budget-panel');
 const chatPanel = document.getElementById('chat-panel');
-const settingsPanel = document.getElementById('settings-panel');
+const morePanel = document.getElementById('more-panel');
 const adminSettingsSection = document.getElementById('admin-settings-section');
 const adminUsersEl = document.getElementById('admin-users');
 const adminMessageCountEl = document.getElementById('admin-message-count');
@@ -84,6 +84,14 @@ const incomesEl = document.getElementById('incomes');
 const budgetIncomeTotalEl = document.getElementById('budget-income-total');
 const budgetNetEl = document.getElementById('budget-net');
 const budgetChartEl = document.getElementById('budget-chart');
+const addNoteBtn = document.getElementById('add-note');
+const notesListEl = document.getElementById('notes-list');
+const addAddressBtn = document.getElementById('add-address');
+const addressesListEl = document.getElementById('addresses-list');
+const addGoalBtn = document.getElementById('add-goal');
+const goalsListEl = document.getElementById('goals-list');
+const newTodoInput = document.getElementById('new-todo-input');
+const todoListEl = document.getElementById('todo-list');
 const chatMessagesEl = document.getElementById('chat-messages');
 const chatForm = document.getElementById('chat-form');
 const chatInput = document.getElementById('chat-input');
@@ -260,15 +268,16 @@ function switchTab(tab) {
   vaultPanel.classList.toggle('hidden', tab !== 'vault');
   budgetPanel.classList.toggle('hidden', tab !== 'budget');
   chatPanel.classList.toggle('hidden', tab !== 'chat');
-  settingsPanel.classList.toggle('hidden', tab !== 'settings');
+  const isMore = tab === 'more';
+  morePanel.classList.toggle('hidden', !isMore);
   tabVaultBtn.classList.toggle('active', tab === 'vault');
   tabBudgetBtn.classList.toggle('active', tab === 'budget');
   tabChatBtn.classList.toggle('active', tab === 'chat');
-  tabSettingsBtn.classList.toggle('active', tab === 'settings');
+  tabMoreBtn.classList.toggle('active', isMore);
   tabVaultBtn.setAttribute('aria-selected', String(tab === 'vault'));
   tabBudgetBtn.setAttribute('aria-selected', String(tab === 'budget'));
   tabChatBtn.setAttribute('aria-selected', String(tab === 'chat'));
-  tabSettingsBtn.setAttribute('aria-selected', String(tab === 'settings'));
+  tabMoreBtn.setAttribute('aria-selected', String(isMore));
 
   if (tab === 'chat') {
     if (!chatLoaded) loadChatHistory();
@@ -276,19 +285,39 @@ function switchTab(tab) {
   } else {
     stopChatPolling();
   }
-  if (tab === 'settings' && isAdmin) loadAdminData();
+
+  // Whichever More sub-page (Settings/Notes/Addresses/Goals/To-Do) might be
+  // open, close it whenever a top-level tab is chosen — including
+  // re-choosing "More" itself, which should always land back on the hub.
+  document.querySelectorAll('.more-subpage').forEach(el => el.classList.add('hidden'));
 }
 tabVaultBtn.addEventListener('click', () => switchTab('vault'));
 tabBudgetBtn.addEventListener('click', () => switchTab('budget'));
 tabChatBtn.addEventListener('click', () => switchTab('chat'));
-tabSettingsBtn.addEventListener('click', () => switchTab('settings'));
+tabMoreBtn.addEventListener('click', () => switchTab('more'));
+
+function openMorePage(panelId) {
+  morePanel.classList.add('hidden');
+  document.querySelectorAll('.more-subpage').forEach(el => el.classList.toggle('hidden', el.id !== panelId));
+  if (panelId === 'settings-panel' && isAdmin) loadAdminData();
+}
+function closeMorePage() {
+  document.querySelectorAll('.more-subpage').forEach(el => el.classList.add('hidden'));
+  morePanel.classList.remove('hidden');
+}
+document.querySelectorAll('#more-panel [data-more-target]').forEach(btn => {
+  btn.addEventListener('click', () => openMorePage(btn.getAttribute('data-more-target')));
+});
+document.querySelectorAll('.more-back-btn').forEach(btn => {
+  btn.addEventListener('click', closeMorePage);
+});
 
 logoutBtn.addEventListener('click', async () => {
   clearTimeout(saveTimer);
   if (dirty) await saveVaultNow(); // flush any pending debounced save first
   await Api.logout();
   encKey = null;
-  vault = { entries: [], budget: { expenses: [], incomes: [] } };
+  vault = { entries: [], budget: { expenses: [], incomes: [] }, notes: [], addresses: [], goals: [], todos: [] };
   editingPasswordIds.clear();
   currentEntryId = null;
   vaultListView.classList.remove('hidden');
@@ -492,6 +521,10 @@ restoreForm.addEventListener('submit', async (e) => {
     if (!restoredVault.budget) restoredVault.budget = { expenses: [], incomes: [] };
     if (!restoredVault.budget.expenses) restoredVault.budget.expenses = [];
     if (!restoredVault.budget.incomes) restoredVault.budget.incomes = [];
+    if (!restoredVault.notes) restoredVault.notes = [];
+    if (!restoredVault.addresses) restoredVault.addresses = [];
+    if (!restoredVault.goals) restoredVault.goals = [];
+    if (!restoredVault.todos) restoredVault.todos = [];
 
     const currentCount = vault.entries.length + ' entries, ' + vault.budget.expenses.length + ' expenses';
     const backupCount = restoredVault.entries.length + ' entries, ' + restoredVault.budget.expenses.length + ' expenses';
@@ -512,6 +545,11 @@ restoreForm.addEventListener('submit', async (e) => {
     await saveVaultNow();
     renderEntriesList();
     renderExpenses();
+    renderIncomes(); // was missing before too - restore never refreshed the income rows
+    renderNotes();
+    renderAddresses();
+    renderGoals();
+    renderTodos();
     pendingRestore = null;
     restoreDialog.close();
     announce('Vault restored successfully.');
@@ -541,6 +579,10 @@ async function enterVault(username) {
   if (!vault.budget) vault.budget = { expenses: [], incomes: [] };
   if (!vault.budget.expenses) vault.budget.expenses = [];
   if (!vault.budget.incomes) vault.budget.incomes = [];
+  if (!vault.notes) vault.notes = [];
+  if (!vault.addresses) vault.addresses = [];
+  if (!vault.goals) vault.goals = [];
+  if (!vault.todos) vault.todos = [];
   adminSettingsSection.classList.toggle('hidden', !isAdmin);
   authView.classList.add('hidden');
   vaultView.classList.remove('hidden');
@@ -551,6 +593,10 @@ async function enterVault(username) {
   renderEntriesList();
   renderExpenses();
   renderIncomes();
+  renderNotes();
+  renderAddresses();
+  renderGoals();
+  renderTodos();
 }
 
 function newEntry() {
@@ -1198,6 +1244,592 @@ addIncomeBtn.addEventListener('click', () => {
   vault.budget.incomes.unshift(newIncome());
   markDirty();
   renderIncomes();
+});
+
+// --- To-Do ---
+
+function newTodo(text) {
+  return {
+    id: crypto.randomUUID(),
+    text: text || '',
+    done: false,
+    dueDate: '',
+    createdAt: new Date().toISOString()
+  };
+}
+
+function sortedTodos() {
+  // Incomplete first, each group newest-first.
+  return [...vault.todos].sort((a, b) => {
+    if (a.done !== b.done) return a.done ? 1 : -1;
+    return b.createdAt.localeCompare(a.createdAt);
+  });
+}
+
+function renderTodos() {
+  todoListEl.innerHTML = '';
+  const todos = sortedTodos();
+  if (todos.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'expenses-empty';
+    empty.textContent = 'No tasks yet. Add one above.';
+    todoListEl.appendChild(empty);
+    return;
+  }
+  todos.forEach(todo => todoListEl.appendChild(renderTodoRow(todo)));
+}
+
+function renderTodoRow(todo) {
+  const row = document.createElement('div');
+  row.className = 'todo-row' + (todo.done ? ' done' : '');
+
+  const checkbox = document.createElement('input');
+  checkbox.type = 'checkbox';
+  checkbox.className = 'todo-checkbox';
+  checkbox.checked = todo.done;
+  checkbox.setAttribute('aria-label', (todo.done ? 'Mark incomplete: ' : 'Mark complete: ') + (todo.text || 'task'));
+  checkbox.addEventListener('change', () => {
+    todo.done = checkbox.checked;
+    markDirty();
+    renderTodos();
+  });
+
+  const textInput = document.createElement('input');
+  textInput.type = 'text';
+  textInput.className = 'todo-text';
+  textInput.placeholder = 'Task';
+  textInput.setAttribute('aria-label', 'Task text');
+  textInput.autocomplete = 'off';
+  textInput.value = todo.text || '';
+  textInput.addEventListener('input', () => { todo.text = textInput.value; markDirty(); });
+
+  const dueInput = document.createElement('input');
+  dueInput.type = 'date';
+  dueInput.className = 'todo-due';
+  dueInput.setAttribute('aria-label', 'Due date (optional)');
+  dueInput.value = todo.dueDate || '';
+  dueInput.addEventListener('input', () => { todo.dueDate = dueInput.value; markDirty(); });
+
+  const removeBtn = document.createElement('button');
+  removeBtn.className = 'icon-btn danger';
+  removeBtn.textContent = '✕';
+  removeBtn.title = 'Delete this task';
+  removeBtn.setAttribute('aria-label', 'Delete task' + (todo.text ? ': ' + todo.text : ''));
+  removeBtn.addEventListener('click', () => {
+    const idx = vault.todos.findIndex(t => t.id === todo.id);
+    if (idx !== -1) vault.todos.splice(idx, 1);
+    markDirty();
+    renderTodos();
+    announce('Task deleted.');
+  });
+
+  row.appendChild(checkbox);
+  row.appendChild(textInput);
+  row.appendChild(dueInput);
+  row.appendChild(removeBtn);
+  return row;
+}
+
+newTodoInput.addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter') return;
+  const text = newTodoInput.value.trim();
+  if (!text) return;
+  vault.todos.unshift(newTodo(text));
+  newTodoInput.value = '';
+  markDirty();
+  renderTodos();
+  announce('Task added.');
+});
+
+// --- Goals ---
+
+function newGoal() {
+  return {
+    id: crypto.randomUUID(),
+    title: '',
+    description: '',
+    targetDate: '',
+    status: 'not-started', // used when no numeric target is set
+    target: null,          // numeric target, e.g. a dollar amount or count
+    current: 0
+  };
+}
+
+function renderGoals() {
+  goalsListEl.innerHTML = '';
+  const goals = vault.goals;
+  if (goals.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'expenses-empty';
+    empty.textContent = 'No goals yet. Click "+ Add goal" to start tracking one.';
+    goalsListEl.appendChild(empty);
+    return;
+  }
+  goals.forEach((goal, idx) => goalsListEl.appendChild(renderGoalRow(goal, idx)));
+}
+
+function renderGoalRow(goal, idx) {
+  const row = document.createElement('div');
+  row.className = 'goal-row';
+
+  const topLine = document.createElement('div');
+  topLine.className = 'goal-row-top';
+
+  const titleInput = document.createElement('input');
+  titleInput.type = 'text';
+  titleInput.className = 'goal-title';
+  titleInput.placeholder = 'Goal title';
+  titleInput.setAttribute('aria-label', 'Goal title');
+  titleInput.autocomplete = 'off';
+  titleInput.value = goal.title || '';
+  titleInput.addEventListener('input', () => { goal.title = titleInput.value; markDirty(); });
+
+  const removeBtn = document.createElement('button');
+  removeBtn.className = 'icon-btn danger';
+  removeBtn.textContent = '✕';
+  removeBtn.title = 'Delete this goal';
+  removeBtn.setAttribute('aria-label', 'Delete goal' + (goal.title ? ': ' + goal.title : ' ' + (idx + 1)));
+  removeBtn.addEventListener('click', () => {
+    if (!confirm('Remove this goal? This cannot be undone.')) return;
+    vault.goals.splice(idx, 1);
+    markDirty();
+    renderGoals();
+  });
+
+  topLine.appendChild(titleInput);
+  topLine.appendChild(removeBtn);
+
+  const descInput = document.createElement('input');
+  descInput.type = 'text';
+  descInput.className = 'goal-description';
+  descInput.placeholder = 'Description (optional)';
+  descInput.setAttribute('aria-label', 'Goal description');
+  descInput.autocomplete = 'off';
+  descInput.value = goal.description || '';
+  descInput.addEventListener('input', () => { goal.description = descInput.value; markDirty(); });
+
+  const metaLine = document.createElement('div');
+  metaLine.className = 'goal-row-meta';
+
+  const dateInput = document.createElement('input');
+  dateInput.type = 'date';
+  dateInput.className = 'goal-target-date';
+  dateInput.setAttribute('aria-label', 'Target date (optional)');
+  dateInput.value = goal.targetDate || '';
+  dateInput.addEventListener('input', () => { goal.targetDate = dateInput.value; markDirty(); });
+
+  const hasTarget = goal.target !== null && goal.target !== undefined && goal.target !== '';
+
+  const targetToggle = document.createElement('label');
+  targetToggle.className = 'goal-target-toggle';
+  const targetCheckbox = document.createElement('input');
+  targetCheckbox.type = 'checkbox';
+  targetCheckbox.checked = hasTarget;
+  targetCheckbox.setAttribute('aria-label', 'Track a numeric target for this goal');
+  targetToggle.appendChild(targetCheckbox);
+  targetToggle.appendChild(document.createTextNode(' Numeric target'));
+
+  metaLine.appendChild(dateInput);
+  metaLine.appendChild(targetToggle);
+
+  row.appendChild(topLine);
+  row.appendChild(descInput);
+  row.appendChild(metaLine);
+
+  const progressWrap = document.createElement('div');
+  progressWrap.className = 'goal-progress-wrap';
+
+  function renderProgressSection() {
+    progressWrap.innerHTML = '';
+    if (targetCheckbox.checked) {
+      const nums = document.createElement('div');
+      nums.className = 'goal-progress-nums';
+
+      const currentInput = document.createElement('input');
+      currentInput.type = 'number';
+      currentInput.className = 'goal-current';
+      currentInput.setAttribute('aria-label', 'Current progress');
+      currentInput.value = goal.current || 0;
+      currentInput.addEventListener('input', () => {
+        goal.current = parseFloat(currentInput.value) || 0;
+        markDirty();
+        renderProgressBar();
+      });
+
+      const sep = document.createElement('span');
+      sep.textContent = ' of ';
+
+      const targetInput = document.createElement('input');
+      targetInput.type = 'number';
+      targetInput.className = 'goal-target';
+      targetInput.setAttribute('aria-label', 'Target amount');
+      targetInput.value = goal.target || '';
+      targetInput.addEventListener('input', () => {
+        goal.target = parseFloat(targetInput.value) || 0;
+        markDirty();
+        renderProgressBar();
+      });
+
+      nums.appendChild(currentInput);
+      nums.appendChild(sep);
+      nums.appendChild(targetInput);
+      progressWrap.appendChild(nums);
+
+      const track = document.createElement('div');
+      track.className = 'chart-bar-track goal-progress-track';
+      const fill = document.createElement('div');
+      fill.className = 'chart-bar-fill';
+      track.appendChild(fill);
+      progressWrap.appendChild(track);
+
+      function renderProgressBar() {
+        const pct = goal.target > 0 ? Math.min((goal.current / goal.target) * 100, 100) : 0;
+        fill.style.width = Math.max(pct, goal.current > 0 ? 2 : 0) + '%';
+      }
+      renderProgressBar();
+    } else {
+      const statusSelect = document.createElement('select');
+      statusSelect.className = 'goal-status';
+      statusSelect.setAttribute('aria-label', 'Goal status');
+      [['not-started', 'Not started'], ['in-progress', 'In progress'], ['done', 'Done']].forEach(([value, label]) => {
+        const opt = document.createElement('option');
+        opt.value = value;
+        opt.textContent = label;
+        if (goal.status === value) opt.selected = true;
+        statusSelect.appendChild(opt);
+      });
+      statusSelect.addEventListener('change', () => { goal.status = statusSelect.value; markDirty(); });
+      progressWrap.appendChild(statusSelect);
+    }
+  }
+
+  targetCheckbox.addEventListener('change', () => {
+    if (targetCheckbox.checked) {
+      goal.target = goal.target || 0;
+    } else {
+      goal.target = null;
+    }
+    markDirty();
+    renderProgressSection();
+  });
+
+  renderProgressSection();
+  row.appendChild(progressWrap);
+
+  return row;
+}
+
+addGoalBtn.addEventListener('click', () => {
+  vault.goals.unshift(newGoal());
+  markDirty();
+  renderGoals();
+});
+
+// --- Addresses ---
+
+const US_STATES = [
+  'Alabama', 'Alaska', 'Arizona', 'Arkansas', 'California', 'Colorado', 'Connecticut', 'Delaware',
+  'District of Columbia', 'Florida', 'Georgia', 'Hawaii', 'Idaho', 'Illinois', 'Indiana', 'Iowa',
+  'Kansas', 'Kentucky', 'Louisiana', 'Maine', 'Maryland', 'Massachusetts', 'Michigan', 'Minnesota',
+  'Mississippi', 'Missouri', 'Montana', 'Nebraska', 'Nevada', 'New Hampshire', 'New Jersey', 'New Mexico',
+  'New York', 'North Carolina', 'North Dakota', 'Ohio', 'Oklahoma', 'Oregon', 'Pennsylvania', 'Rhode Island',
+  'South Carolina', 'South Dakota', 'Tennessee', 'Texas', 'Utah', 'Vermont', 'Virginia', 'Washington',
+  'West Virginia', 'Wisconsin', 'Wyoming'
+];
+
+let statesDatalistEl = null;
+function ensureStatesDatalist() {
+  if (statesDatalistEl) return statesDatalistEl;
+  statesDatalistEl = document.createElement('datalist');
+  statesDatalistEl.id = 'us-states-list';
+  US_STATES.forEach(state => {
+    const opt = document.createElement('option');
+    opt.value = state;
+    statesDatalistEl.appendChild(opt);
+  });
+  document.body.appendChild(statesDatalistEl);
+  return statesDatalistEl;
+}
+
+function newAddress() {
+  return {
+    id: crypto.randomUUID(),
+    place: '',
+    address: '',
+    state: '',
+    phone: '',
+    dateUsed: '',
+    status: 'active',   // active | moved-out
+    category: ''
+  };
+}
+
+function renderAddresses() {
+  ensureStatesDatalist();
+  addressesListEl.innerHTML = '';
+  const addresses = vault.addresses;
+  if (addresses.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'expenses-empty';
+    empty.textContent = 'No address records yet. Click "+ Add address record" to start tracking where you\'ve used your home address.';
+    addressesListEl.appendChild(empty);
+    return;
+  }
+  addresses.forEach((addr, idx) => addressesListEl.appendChild(renderAddressRow(addr, idx)));
+}
+
+function renderAddressRow(addr, idx) {
+  const row = document.createElement('div');
+  row.className = 'address-row';
+
+  const topLine = document.createElement('div');
+  topLine.className = 'address-row-top';
+
+  const placeInput = document.createElement('input');
+  placeInput.type = 'text';
+  placeInput.className = 'address-place';
+  placeInput.placeholder = 'Company / place / department';
+  placeInput.setAttribute('aria-label', 'Place name');
+  placeInput.autocomplete = 'off';
+  placeInput.value = addr.place || '';
+  placeInput.addEventListener('input', () => { addr.place = placeInput.value; markDirty(); });
+
+  const removeBtn = document.createElement('button');
+  removeBtn.className = 'icon-btn danger';
+  removeBtn.textContent = '✕';
+  removeBtn.title = 'Delete this address record';
+  removeBtn.setAttribute('aria-label', 'Delete address record' + (addr.place ? ': ' + addr.place : ' ' + (idx + 1)));
+  removeBtn.addEventListener('click', () => {
+    if (!confirm('Remove this address record? This cannot be undone.')) return;
+    vault.addresses.splice(idx, 1);
+    markDirty();
+    renderAddresses();
+  });
+
+  topLine.appendChild(placeInput);
+  topLine.appendChild(removeBtn);
+
+  const addressInput = document.createElement('input');
+  addressInput.type = 'text';
+  addressInput.className = 'address-street';
+  addressInput.placeholder = 'Address used';
+  addressInput.setAttribute('aria-label', 'Address used');
+  addressInput.autocomplete = 'off';
+  addressInput.value = addr.address || '';
+  addressInput.addEventListener('input', () => { addr.address = addressInput.value; markDirty(); });
+
+  const metaLine = document.createElement('div');
+  metaLine.className = 'address-row-meta';
+
+  const stateInput = document.createElement('input');
+  stateInput.type = 'text';
+  stateInput.className = 'address-state';
+  stateInput.placeholder = 'State';
+  stateInput.setAttribute('aria-label', 'State');
+  stateInput.setAttribute('list', 'us-states-list');
+  stateInput.autocomplete = 'off';
+  stateInput.value = addr.state || '';
+  stateInput.addEventListener('input', () => { addr.state = stateInput.value; markDirty(); });
+
+  const categoryInput = document.createElement('input');
+  categoryInput.type = 'text';
+  categoryInput.className = 'address-category';
+  categoryInput.placeholder = 'Category (optional)';
+  categoryInput.setAttribute('aria-label', 'Category');
+  categoryInput.autocomplete = 'off';
+  categoryInput.value = addr.category || '';
+  categoryInput.addEventListener('input', () => { addr.category = categoryInput.value; markDirty(); });
+
+  const dateInput = document.createElement('input');
+  dateInput.type = 'date';
+  dateInput.className = 'address-date-used';
+  dateInput.setAttribute('aria-label', 'Date used (optional)');
+  dateInput.value = addr.dateUsed || '';
+  dateInput.addEventListener('input', () => { addr.dateUsed = dateInput.value; markDirty(); });
+
+  metaLine.appendChild(stateInput);
+  metaLine.appendChild(categoryInput);
+  metaLine.appendChild(dateInput);
+
+  const phoneLine = document.createElement('div');
+  phoneLine.className = 'address-row-phone';
+
+  const phoneInput = document.createElement('input');
+  phoneInput.type = 'tel';
+  phoneInput.className = 'address-phone';
+  phoneInput.placeholder = 'Phone (optional)';
+  phoneInput.setAttribute('aria-label', 'Phone number');
+  phoneInput.autocomplete = 'off';
+  phoneInput.value = addr.phone || '';
+  phoneInput.addEventListener('input', () => {
+    addr.phone = phoneInput.value;
+    markDirty();
+    updatePhoneLink();
+  });
+
+  const phoneLink = document.createElement('a');
+  phoneLink.className = 'address-phone-link';
+  phoneLink.textContent = '📞';
+  phoneLink.title = 'Call this number';
+
+  const copyPhoneBtn = document.createElement('button');
+  copyPhoneBtn.className = 'icon-btn';
+  copyPhoneBtn.textContent = '⧉';
+  copyPhoneBtn.title = 'Copy phone number';
+  copyPhoneBtn.setAttribute('aria-label', 'Copy phone number');
+  copyPhoneBtn.addEventListener('click', async () => {
+    if (!addr.phone) return;
+    await navigator.clipboard.writeText(addr.phone);
+    announce('Phone number copied.');
+  });
+
+  function updatePhoneLink() {
+    const has = !!addr.phone;
+    phoneLink.classList.toggle('hidden', !has);
+    copyPhoneBtn.classList.toggle('hidden', !has);
+    if (has) phoneLink.href = 'tel:' + addr.phone.replace(/[^0-9+]/g, '');
+  }
+  updatePhoneLink();
+
+  phoneLine.appendChild(phoneInput);
+  phoneLine.appendChild(phoneLink);
+  phoneLine.appendChild(copyPhoneBtn);
+
+  const statusSelect = document.createElement('select');
+  statusSelect.className = 'address-status';
+  statusSelect.setAttribute('aria-label', 'Status');
+  [['active', 'Currently used'], ['moved-out', 'Moved out / no longer used']].forEach(([value, label]) => {
+    const opt = document.createElement('option');
+    opt.value = value;
+    opt.textContent = label;
+    if ((addr.status || 'active') === value) opt.selected = true;
+    statusSelect.appendChild(opt);
+  });
+  statusSelect.addEventListener('change', () => { addr.status = statusSelect.value; markDirty(); });
+
+  row.appendChild(topLine);
+  row.appendChild(addressInput);
+  row.appendChild(metaLine);
+  row.appendChild(phoneLine);
+  row.appendChild(statusSelect);
+
+  return row;
+}
+
+addAddressBtn.addEventListener('click', () => {
+  vault.addresses.unshift(newAddress());
+  markDirty();
+  renderAddresses();
+});
+
+// --- Notes ---
+
+const NOTE_COLORS = ['#fff6b7', '#c9f2c7', '#c7e3f2', '#f2c7e6', '#e3d7f7', '#e8e8e8'];
+
+function newNote() {
+  return {
+    id: crypto.randomUUID(),
+    title: '',
+    body: '',
+    color: NOTE_COLORS[0],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+}
+
+function sortedNotes() {
+  return [...vault.notes].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
+function renderNotes() {
+  notesListEl.innerHTML = '';
+  const notes = sortedNotes();
+  if (notes.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'expenses-empty';
+    empty.textContent = 'No notes yet. Click "+ Add note" to jot something down.';
+    notesListEl.appendChild(empty);
+    return;
+  }
+  notes.forEach(note => notesListEl.appendChild(renderNoteCard(note)));
+}
+
+function renderNoteCard(note) {
+  const card = document.createElement('div');
+  card.className = 'note-card';
+  card.style.background = note.color || NOTE_COLORS[0];
+
+  const topRow = document.createElement('div');
+  topRow.className = 'note-card-top';
+
+  const titleInput = document.createElement('input');
+  titleInput.type = 'text';
+  titleInput.className = 'note-title';
+  titleInput.placeholder = 'Title (optional)';
+  titleInput.setAttribute('aria-label', 'Note title');
+  titleInput.autocomplete = 'off';
+  titleInput.value = note.title || '';
+  titleInput.addEventListener('input', () => {
+    note.title = titleInput.value;
+    note.updatedAt = new Date().toISOString();
+    markDirty();
+  });
+
+  const removeBtn = document.createElement('button');
+  removeBtn.className = 'icon-btn danger';
+  removeBtn.textContent = '✕';
+  removeBtn.title = 'Delete this note';
+  removeBtn.setAttribute('aria-label', 'Delete note' + (note.title ? ': ' + note.title : ''));
+  removeBtn.addEventListener('click', () => {
+    if (!confirm('Delete this note? This cannot be undone.')) return;
+    const idx = vault.notes.findIndex(n => n.id === note.id);
+    if (idx !== -1) vault.notes.splice(idx, 1);
+    markDirty();
+    renderNotes();
+  });
+
+  topRow.appendChild(titleInput);
+  topRow.appendChild(removeBtn);
+
+  const bodyInput = document.createElement('textarea');
+  bodyInput.className = 'note-body';
+  bodyInput.placeholder = 'Write a note…';
+  bodyInput.setAttribute('aria-label', 'Note body');
+  bodyInput.value = note.body || '';
+  bodyInput.addEventListener('input', () => {
+    note.body = bodyInput.value;
+    note.updatedAt = new Date().toISOString();
+    markDirty();
+  });
+
+  const swatches = document.createElement('div');
+  swatches.className = 'note-color-swatches';
+  NOTE_COLORS.forEach(color => {
+    const swatch = document.createElement('button');
+    swatch.type = 'button';
+    swatch.className = 'note-color-swatch' + (note.color === color ? ' selected' : '');
+    swatch.style.background = color;
+    swatch.setAttribute('aria-label', 'Set note color');
+    swatch.addEventListener('click', () => {
+      note.color = color;
+      card.style.background = color;
+      markDirty();
+      swatches.querySelectorAll('.note-color-swatch').forEach(s => s.classList.remove('selected'));
+      swatch.classList.add('selected');
+    });
+    swatches.appendChild(swatch);
+  });
+
+  card.appendChild(topRow);
+  card.appendChild(bodyInput);
+  card.appendChild(swatches);
+  return card;
+}
+
+addNoteBtn.addEventListener('click', () => {
+  vault.notes.unshift(newNote());
+  markDirty();
+  renderNotes();
 });
 
 // --- Chat (shared, plain text — not part of the encrypted vault) ---
