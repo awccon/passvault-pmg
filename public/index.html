@@ -150,7 +150,70 @@
       </form>
     </section>
 
-    <section id="settings-panel" class="panel hidden" role="tabpanel" aria-labelledby="tab-settings">
+    <section id="more-panel" class="panel hidden" role="tabpanel" aria-labelledby="tab-more">
+      <div class="entries-list">
+        <button type="button" class="entry-list-row" data-more-target="notes-panel">
+          <span class="entry-list-icon" aria-hidden="true">📝</span>
+          <span class="entry-list-info"><span class="entry-list-email">Notes</span></span>
+          <span class="entry-list-chevron" aria-hidden="true">›</span>
+        </button>
+        <button type="button" class="entry-list-row" data-more-target="addresses-panel">
+          <span class="entry-list-icon" aria-hidden="true">📍</span>
+          <span class="entry-list-info"><span class="entry-list-email">Addresses</span></span>
+          <span class="entry-list-chevron" aria-hidden="true">›</span>
+        </button>
+        <button type="button" class="entry-list-row" data-more-target="goals-panel">
+          <span class="entry-list-icon" aria-hidden="true">🎯</span>
+          <span class="entry-list-info"><span class="entry-list-email">Goals</span></span>
+          <span class="entry-list-chevron" aria-hidden="true">›</span>
+        </button>
+        <button type="button" class="entry-list-row" data-more-target="todo-panel">
+          <span class="entry-list-icon" aria-hidden="true">✅</span>
+          <span class="entry-list-info"><span class="entry-list-email">To-Do</span></span>
+          <span class="entry-list-chevron" aria-hidden="true">›</span>
+        </button>
+        <button type="button" class="entry-list-row" data-more-target="settings-panel">
+          <span class="entry-list-icon" aria-hidden="true">⚙️</span>
+          <span class="entry-list-info"><span class="entry-list-email">Settings</span></span>
+          <span class="entry-list-chevron" aria-hidden="true">›</span>
+        </button>
+      </div>
+    </section>
+
+    <section id="notes-panel" class="panel hidden more-subpage" aria-label="Notes">
+      <button type="button" class="back-btn more-back-btn">‹ Back to More</button>
+      <div class="content-toolbar">
+        <button id="add-note" class="primary-btn">+ Add note</button>
+      </div>
+      <div id="notes-list" class="notes-grid"></div>
+    </section>
+
+    <section id="addresses-panel" class="panel hidden more-subpage" aria-label="Addresses">
+      <button type="button" class="back-btn more-back-btn">‹ Back to More</button>
+      <div class="content-toolbar">
+        <button id="add-address" class="primary-btn">+ Add address record</button>
+      </div>
+      <div id="addresses-list" class="entries-list"></div>
+    </section>
+
+    <section id="goals-panel" class="panel hidden more-subpage" aria-label="Goals">
+      <button type="button" class="back-btn more-back-btn">‹ Back to More</button>
+      <div class="content-toolbar">
+        <button id="add-goal" class="primary-btn">+ Add goal</button>
+      </div>
+      <div id="goals-list" class="entries-list"></div>
+    </section>
+
+    <section id="todo-panel" class="panel hidden more-subpage" aria-label="To-Do">
+      <button type="button" class="back-btn more-back-btn">‹ Back to More</button>
+      <div class="content-toolbar">
+        <input id="new-todo-input" type="text" class="vault-search" placeholder="Add a task and press Enter" autocomplete="off">
+      </div>
+      <div id="todo-list" class="entries-list"></div>
+    </section>
+
+    <section id="settings-panel" class="panel hidden more-subpage" aria-label="Settings">
+      <button type="button" class="back-btn more-back-btn">‹ Back to More</button>
       <div class="settings-section">
         <h2 class="sub-title">Account</h2>
         <div class="settings-actions">
@@ -196,8 +259,8 @@
     <button id="tab-chat" class="bottom-nav-item" role="tab" aria-selected="false" aria-controls="chat-panel" type="button">
       <span class="bottom-nav-icon">💬</span><span class="bottom-nav-label">Chat</span>
     </button>
-    <button id="tab-settings" class="bottom-nav-item" role="tab" aria-selected="false" aria-controls="settings-panel" type="button">
-      <span class="bottom-nav-icon">⚙️</span><span class="bottom-nav-label">Settings</span>
+    <button id="tab-more" class="bottom-nav-item" role="tab" aria-selected="false" aria-controls="more-panel" type="button">
+      <span class="bottom-nav-icon">⋯</span><span class="bottom-nav-label">More</span>
     </button>
   </nav>
 

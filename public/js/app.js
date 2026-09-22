@@ -66,11 +66,11 @@ const restoreCancelBtn = document.getElementById('restore-cancel');
 const tabVaultBtn = document.getElementById('tab-vault');
 const tabBudgetBtn = document.getElementById('tab-budget');
 const tabChatBtn = document.getElementById('tab-chat');
-const tabSettingsBtn = document.getElementById('tab-settings');
+const tabMoreBtn = document.getElementById('tab-more');
 const vaultPanel = document.getElementById('vault-panel');
 const budgetPanel = document.getElementById('budget-panel');
 const chatPanel = document.getElementById('chat-panel');
-const settingsPanel = document.getElementById('settings-panel');
+const morePanel = document.getElementById('more-panel');
 const adminSettingsSection = document.getElementById('admin-settings-section');
 const adminUsersEl = document.getElementById('admin-users');
 const adminMessageCountEl = document.getElementById('admin-message-count');
@@ -260,15 +260,16 @@ function switchTab(tab) {
   vaultPanel.classList.toggle('hidden', tab !== 'vault');
   budgetPanel.classList.toggle('hidden', tab !== 'budget');
   chatPanel.classList.toggle('hidden', tab !== 'chat');
-  settingsPanel.classList.toggle('hidden', tab !== 'settings');
+  const isMore = tab === 'more';
+  morePanel.classList.toggle('hidden', !isMore);
   tabVaultBtn.classList.toggle('active', tab === 'vault');
   tabBudgetBtn.classList.toggle('active', tab === 'budget');
   tabChatBtn.classList.toggle('active', tab === 'chat');
-  tabSettingsBtn.classList.toggle('active', tab === 'settings');
+  tabMoreBtn.classList.toggle('active', isMore);
   tabVaultBtn.setAttribute('aria-selected', String(tab === 'vault'));
   tabBudgetBtn.setAttribute('aria-selected', String(tab === 'budget'));
   tabChatBtn.setAttribute('aria-selected', String(tab === 'chat'));
-  tabSettingsBtn.setAttribute('aria-selected', String(tab === 'settings'));
+  tabMoreBtn.setAttribute('aria-selected', String(isMore));
 
   if (tab === 'chat') {
     if (!chatLoaded) loadChatHistory();
@@ -276,12 +277,32 @@ function switchTab(tab) {
   } else {
     stopChatPolling();
   }
-  if (tab === 'settings' && isAdmin) loadAdminData();
+
+  // Whichever More sub-page (Settings/Notes/Addresses/Goals/To-Do) might be
+  // open, close it whenever a top-level tab is chosen — including
+  // re-choosing "More" itself, which should always land back on the hub.
+  document.querySelectorAll('.more-subpage').forEach(el => el.classList.add('hidden'));
 }
 tabVaultBtn.addEventListener('click', () => switchTab('vault'));
 tabBudgetBtn.addEventListener('click', () => switchTab('budget'));
 tabChatBtn.addEventListener('click', () => switchTab('chat'));
-tabSettingsBtn.addEventListener('click', () => switchTab('settings'));
+tabMoreBtn.addEventListener('click', () => switchTab('more'));
+
+function openMorePage(panelId) {
+  morePanel.classList.add('hidden');
+  document.querySelectorAll('.more-subpage').forEach(el => el.classList.toggle('hidden', el.id !== panelId));
+  if (panelId === 'settings-panel' && isAdmin) loadAdminData();
+}
+function closeMorePage() {
+  document.querySelectorAll('.more-subpage').forEach(el => el.classList.add('hidden'));
+  morePanel.classList.remove('hidden');
+}
+document.querySelectorAll('#more-panel [data-more-target]').forEach(btn => {
+  btn.addEventListener('click', () => openMorePage(btn.getAttribute('data-more-target')));
+});
+document.querySelectorAll('.more-back-btn').forEach(btn => {
+  btn.addEventListener('click', closeMorePage);
+});
 
 logoutBtn.addEventListener('click', async () => {
   clearTimeout(saveTimer);
