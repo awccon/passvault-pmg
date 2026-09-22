@@ -22,6 +22,11 @@ const inviteCodeField = document.getElementById('invite-code-field');
 const inviteCodeInput = document.getElementById('invite-code');
 const modeToggle = document.getElementById('mode-toggle');
 const entriesEl = document.getElementById('entries');
+const entriesListEl = document.getElementById('entries-list');
+const vaultListView = document.getElementById('vault-list-view');
+const vaultDetailView = document.getElementById('vault-detail-view');
+const vaultSearchInput = document.getElementById('vault-search');
+const vaultBackBtn = document.getElementById('vault-back-btn');
 const addEntryBtn = document.getElementById('add-entry');
 const generatorToggle = document.getElementById('generator-toggle');
 const generatorBody = document.getElementById('generator-body');
@@ -61,11 +66,12 @@ const restoreCancelBtn = document.getElementById('restore-cancel');
 const tabVaultBtn = document.getElementById('tab-vault');
 const tabBudgetBtn = document.getElementById('tab-budget');
 const tabChatBtn = document.getElementById('tab-chat');
-const tabAdminBtn = document.getElementById('tab-admin');
+const tabSettingsBtn = document.getElementById('tab-settings');
 const vaultPanel = document.getElementById('vault-panel');
 const budgetPanel = document.getElementById('budget-panel');
 const chatPanel = document.getElementById('chat-panel');
-const adminPanel = document.getElementById('admin-panel');
+const settingsPanel = document.getElementById('settings-panel');
+const adminSettingsSection = document.getElementById('admin-settings-section');
 const adminUsersEl = document.getElementById('admin-users');
 const adminMessageCountEl = document.getElementById('admin-message-count');
 const clearChatBtn = document.getElementById('clear-chat-btn');
@@ -101,9 +107,14 @@ let pendingRestore = null; // parsed+validated backup file, waiting on the passw
 
 // Password rows default to view-only (show/copy only); editing unlocks
 // the label/value fields plus generate/delete. Tracked by password id
-// (not array index, which shifts) so it survives renderEntries() full
-// rebuilds triggered by unrelated changes elsewhere in the vault.
+// (not array index, which shifts) so it survives the full re-renders
+// triggered by unrelated changes elsewhere in the vault.
 let editingPasswordIds = new Set();
+
+// Vault is a list view (search + rows) with a detail view for one
+// entry at a time. null = showing the list.
+let currentEntryId = null;
+let vaultSearchQuery = '';
 
 function ensurePasswordIds(entries) {
   entries.forEach(entry => {
@@ -249,15 +260,15 @@ function switchTab(tab) {
   vaultPanel.classList.toggle('hidden', tab !== 'vault');
   budgetPanel.classList.toggle('hidden', tab !== 'budget');
   chatPanel.classList.toggle('hidden', tab !== 'chat');
-  adminPanel.classList.toggle('hidden', tab !== 'admin');
+  settingsPanel.classList.toggle('hidden', tab !== 'settings');
   tabVaultBtn.classList.toggle('active', tab === 'vault');
   tabBudgetBtn.classList.toggle('active', tab === 'budget');
   tabChatBtn.classList.toggle('active', tab === 'chat');
-  tabAdminBtn.classList.toggle('active', tab === 'admin');
+  tabSettingsBtn.classList.toggle('active', tab === 'settings');
   tabVaultBtn.setAttribute('aria-selected', String(tab === 'vault'));
   tabBudgetBtn.setAttribute('aria-selected', String(tab === 'budget'));
   tabChatBtn.setAttribute('aria-selected', String(tab === 'chat'));
-  tabAdminBtn.setAttribute('aria-selected', String(tab === 'admin'));
+  tabSettingsBtn.setAttribute('aria-selected', String(tab === 'settings'));
 
   if (tab === 'chat') {
     if (!chatLoaded) loadChatHistory();
@@ -265,12 +276,12 @@ function switchTab(tab) {
   } else {
     stopChatPolling();
   }
-  if (tab === 'admin') loadAdminData();
+  if (tab === 'settings' && isAdmin) loadAdminData();
 }
 tabVaultBtn.addEventListener('click', () => switchTab('vault'));
 tabBudgetBtn.addEventListener('click', () => switchTab('budget'));
 tabChatBtn.addEventListener('click', () => switchTab('chat'));
-tabAdminBtn.addEventListener('click', () => switchTab('admin'));
+tabSettingsBtn.addEventListener('click', () => switchTab('settings'));
 
 logoutBtn.addEventListener('click', async () => {
   clearTimeout(saveTimer);
@@ -279,19 +290,28 @@ logoutBtn.addEventListener('click', async () => {
   encKey = null;
   vault = { entries: [], budget: { expenses: [], incomes: [] } };
   editingPasswordIds.clear();
+  currentEntryId = null;
+  vaultListView.classList.remove('hidden');
+  vaultDetailView.classList.add('hidden');
   stopChatPolling();
   chatMessages = [];
   lastMessageTime = null;
   chatLoaded = false;
   chatMessagesEl.innerHTML = '';
   isAdmin = false;
-  tabAdminBtn.classList.add('hidden');
+  adminSettingsSection.classList.add('hidden');
   vaultView.classList.add('hidden');
   authView.classList.remove('hidden');
   authForm.reset();
   passwordInput.type = 'password';
   masterPasswordToggle.setAttribute('aria-label', 'Show password');
   masterPasswordToggle.setAttribute('aria-pressed', 'false');
+  mode = 'login';
+  document.getElementById('auth-title').textContent = 'Log in';
+  document.getElementById('auth-submit').textContent = 'Log in';
+  modeToggle.textContent = 'Need an account? Register';
+  inviteCodeField.classList.add('hidden');
+  inviteCodeInput.required = false;
 });
 
 function resetChangePasswordForm() {
@@ -485,9 +505,12 @@ restoreForm.addEventListener('submit', async (e) => {
 
     vault = restoredVault;
     editingPasswordIds.clear();
+    currentEntryId = null;
+    vaultListView.classList.remove('hidden');
+    vaultDetailView.classList.add('hidden');
     dirty = true;
     await saveVaultNow();
-    renderEntries();
+    renderEntriesList();
     renderExpenses();
     pendingRestore = null;
     restoreDialog.close();
@@ -518,11 +541,14 @@ async function enterVault(username) {
   if (!vault.budget) vault.budget = { expenses: [], incomes: [] };
   if (!vault.budget.expenses) vault.budget.expenses = [];
   if (!vault.budget.incomes) vault.budget.incomes = [];
-  tabAdminBtn.classList.toggle('hidden', !isAdmin);
+  adminSettingsSection.classList.toggle('hidden', !isAdmin);
   authView.classList.add('hidden');
   vaultView.classList.remove('hidden');
   switchTab('vault');
-  renderEntries();
+  currentEntryId = null;
+  vaultListView.classList.remove('hidden');
+  vaultDetailView.classList.add('hidden');
+  renderEntriesList();
   renderExpenses();
   renderIncomes();
 }
@@ -537,11 +563,85 @@ function newEntry() {
   };
 }
 
-function renderEntries() {
+function renderEntriesList() {
+  entriesListEl.innerHTML = '';
+  const query = vaultSearchQuery.trim().toLowerCase();
+  const filtered = query
+    ? vault.entries.filter(e =>
+        (e.email || '').toLowerCase().includes(query) ||
+        (e.username || '').toLowerCase().includes(query))
+    : vault.entries;
+
+  if (vault.entries.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'expenses-empty';
+    empty.textContent = 'No entries yet. Click "+ Add email address" to start.';
+    entriesListEl.appendChild(empty);
+  } else if (filtered.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'expenses-empty';
+    empty.textContent = 'No entries match your search.';
+    entriesListEl.appendChild(empty);
+  } else {
+    filtered.forEach(entry => entriesListEl.appendChild(renderEntryListRow(entry)));
+  }
+}
+
+function renderEntryListRow(entry) {
+  const row = document.createElement('button');
+  row.type = 'button';
+  row.className = 'entry-list-row';
+  row.setAttribute('aria-label', 'Open ' + (entry.email || 'entry with no email') + (entry.username ? ', username ' + entry.username : ''));
+  row.addEventListener('click', () => openEntryDetail(entry.id));
+
+  const icon = document.createElement('span');
+  icon.className = 'entry-list-icon';
+  icon.textContent = '🔒';
+  icon.setAttribute('aria-hidden', 'true');
+
+  const info = document.createElement('span');
+  info.className = 'entry-list-info';
+  const emailEl = document.createElement('span');
+  emailEl.className = 'entry-list-email';
+  emailEl.textContent = entry.email || '(no email)';
+  info.appendChild(emailEl);
+  if (entry.username) {
+    const userEl = document.createElement('span');
+    userEl.className = 'entry-list-username';
+    userEl.textContent = entry.username;
+    info.appendChild(userEl);
+  }
+
+  const chevron = document.createElement('span');
+  chevron.className = 'entry-list-chevron';
+  chevron.textContent = '›';
+  chevron.setAttribute('aria-hidden', 'true');
+
+  row.appendChild(icon);
+  row.appendChild(info);
+  row.appendChild(chevron);
+  return row;
+}
+
+function openEntryDetail(entryId) {
+  currentEntryId = entryId;
+  vaultListView.classList.add('hidden');
+  vaultDetailView.classList.remove('hidden');
+  renderEntryDetail();
+}
+
+function closeEntryDetail() {
+  currentEntryId = null;
+  vaultDetailView.classList.add('hidden');
+  vaultListView.classList.remove('hidden');
+  renderEntriesList();
+}
+
+function renderEntryDetail() {
   entriesEl.innerHTML = '';
-  vault.entries.forEach((entry, idx) => {
-    entriesEl.appendChild(renderEntry(entry, idx));
-  });
+  const idx = vault.entries.findIndex(e => e.id === currentEntryId);
+  if (idx === -1) { closeEntryDetail(); return; }
+  entriesEl.appendChild(renderEntry(vault.entries[idx], idx));
 }
 
 function renderEntry(entry, idx) {
@@ -568,7 +668,7 @@ function renderEntry(entry, idx) {
     if (confirm('Remove this section for ' + (entry.email || '(no email)') + '? This cannot be undone.')) {
       vault.entries.splice(idx, 1);
       markDirty();
-      renderEntries();
+      closeEntryDetail();
     }
   });
   header.appendChild(emailInput);
@@ -614,7 +714,7 @@ function renderEntry(entry, idx) {
     entry.passwords.push(newPw);
     editingPasswordIds.add(newPw.id);
     markDirty();
-    renderEntries();
+    renderEntryDetail();
   });
   if (entry.passwords.length >= 5) addPwBtn.disabled = true;
   pwSection.appendChild(addPwBtn);
@@ -638,7 +738,7 @@ function renderEntry(entry, idx) {
   addKqBtn.addEventListener('click', () => {
     entry.keyQuestions.push({ question: '', answer: '' });
     markDirty();
-    renderEntries();
+    renderEntryDetail();
   });
   kqSection.appendChild(addKqBtn);
   body.appendChild(kqSection);
@@ -758,7 +858,7 @@ function renderPasswordRow(entry, pw, pwIdx) {
   editToggleBtn.setAttribute('aria-pressed', String(isEditing));
   editToggleBtn.addEventListener('click', () => {
     if (isEditing) editingPasswordIds.delete(pw.id); else editingPasswordIds.add(pw.id);
-    renderEntries();
+    renderEntryDetail();
   });
 
   const removeBtn = document.createElement('button');
@@ -772,7 +872,7 @@ function renderPasswordRow(entry, pw, pwIdx) {
     editingPasswordIds.delete(pw.id);
     entry.passwords.splice(pwIdx, 1);
     markDirty();
-    renderEntries();
+    renderEntryDetail();
   });
 
   row.appendChild(labelInput);
@@ -814,7 +914,7 @@ function renderKeyQuestionRow(entry, kq, kqIdx) {
     if (!confirm('Remove this security question? This cannot be undone.')) return;
     entry.keyQuestions.splice(kqIdx, 1);
     markDirty();
-    renderEntries();
+    renderEntryDetail();
   });
 
   row.appendChild(qInput);
@@ -828,8 +928,15 @@ addEntryBtn.addEventListener('click', () => {
   editingPasswordIds.add(entry.passwords[0].id);
   vault.entries.unshift(entry);
   markDirty();
-  renderEntries();
+  openEntryDetail(entry.id);
 });
+
+vaultSearchInput.addEventListener('input', () => {
+  vaultSearchQuery = vaultSearchInput.value;
+  renderEntriesList();
+});
+
+vaultBackBtn.addEventListener('click', closeEntryDetail);
 
 // --- Budget ---
 

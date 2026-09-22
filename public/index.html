@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>PassVault — Your Password Book</title>
 <link rel="stylesheet" href="css/style.css">
 
@@ -55,54 +55,52 @@
     <div class="topbar-right">
       <span id="save-status" class="save-status" role="status" aria-live="polite"></span>
       <span>Signed in as <strong id="current-user"></strong></span>
-      <button id="backup-btn" class="secondary-btn" type="button">⬇ Backup</button>
-      <button id="restore-btn" class="secondary-btn" type="button">⬆ Restore</button>
-      <input id="restore-file-input" type="file" accept=".json,application/json" class="hidden">
-      <button id="change-password-btn" class="secondary-btn" type="button">🔑 Change password</button>
-      <button id="logout" class="secondary-btn">Log out</button>
     </div>
   </header>
 
-  <nav class="tabbar" role="tablist" aria-label="Sections">
-    <button id="tab-vault" class="tab-btn active" role="tab" aria-selected="true" aria-controls="vault-panel" type="button">🔑 Vault</button>
-    <button id="tab-budget" class="tab-btn" role="tab" aria-selected="false" aria-controls="budget-panel" type="button">💰 Budget</button>
-    <button id="tab-chat" class="tab-btn" role="tab" aria-selected="false" aria-controls="chat-panel" type="button">💬 Chat</button>
-    <button id="tab-admin" class="tab-btn hidden" role="tab" aria-selected="false" aria-controls="admin-panel" type="button">🛠 Admin</button>
-  </nav>
-
   <main class="content">
     <section id="vault-panel" class="panel" role="tabpanel" aria-labelledby="tab-vault">
-      <div class="content-toolbar">
-        <button id="add-entry" class="primary-btn">+ Add email address</button>
-      </div>
+      <div id="vault-list-view">
+        <div class="content-toolbar">
+          <button id="add-entry" class="primary-btn">+ Add email address</button>
+        </div>
 
-      <div class="generator-card">
-        <button id="generator-toggle" class="generator-toggle" aria-expanded="false" aria-controls="generator-body" type="button">
-          <span>🎲 Password Generator</span>
-        </button>
-        <div id="generator-body" class="generator-body hidden">
-          <div class="generator-output-row">
-            <input id="generator-output" type="text" readonly aria-label="Generated password" class="generator-output">
-            <button id="generator-regenerate" class="icon-btn" type="button" title="Generate a new password" aria-label="Generate a new password">🔄</button>
-            <button id="generator-copy" class="icon-btn" type="button" title="Copy password" aria-label="Copy generated password">📋</button>
-          </div>
-          <div class="generator-options">
-            <div class="generator-length-row">
-              <label for="generator-length">Length: <span id="generator-length-value">20</span></label>
-              <input id="generator-length" type="range" min="8" max="64" value="20">
+        <label for="vault-search" class="sr-only">Search your vault</label>
+        <input id="vault-search" type="search" class="vault-search" placeholder="Search by email or username" autocomplete="off">
+
+        <div class="generator-card">
+          <button id="generator-toggle" class="generator-toggle" aria-expanded="false" aria-controls="generator-body" type="button">
+            <span>🎲 Password Generator</span>
+          </button>
+          <div id="generator-body" class="generator-body hidden">
+            <div class="generator-output-row">
+              <input id="generator-output" type="text" readonly aria-label="Generated password" class="generator-output">
+              <button id="generator-regenerate" class="icon-btn" type="button" title="Generate a new password" aria-label="Generate a new password">🔄</button>
+              <button id="generator-copy" class="icon-btn" type="button" title="Copy password" aria-label="Copy generated password">📋</button>
             </div>
-            <div class="generator-checkboxes">
-              <label><input type="checkbox" id="opt-upper" checked> Uppercase (A-Z)</label>
-              <label><input type="checkbox" id="opt-lower" checked> Lowercase (a-z)</label>
-              <label><input type="checkbox" id="opt-numbers" checked> Numbers (0-9)</label>
-              <label><input type="checkbox" id="opt-symbols" checked> Symbols (!@#$…)</label>
+            <div class="generator-options">
+              <div class="generator-length-row">
+                <label for="generator-length">Length: <span id="generator-length-value">20</span></label>
+                <input id="generator-length" type="range" min="8" max="64" value="20">
+              </div>
+              <div class="generator-checkboxes">
+                <label><input type="checkbox" id="opt-upper" checked> Uppercase (A-Z)</label>
+                <label><input type="checkbox" id="opt-lower" checked> Lowercase (a-z)</label>
+                <label><input type="checkbox" id="opt-numbers" checked> Numbers (0-9)</label>
+                <label><input type="checkbox" id="opt-symbols" checked> Symbols (!@#$…)</label>
+              </div>
+              <p id="generator-warning" class="generator-warning hidden" role="alert">Select at least one character type.</p>
             </div>
-            <p id="generator-warning" class="generator-warning hidden" role="alert">Select at least one character type.</p>
           </div>
         </div>
+
+        <div id="entries-list" class="entries-list"></div>
       </div>
 
-      <div id="entries"></div>
+      <div id="vault-detail-view" class="hidden">
+        <button id="vault-back-btn" class="back-btn" type="button">‹ Back to Vault</button>
+        <div id="entries"></div>
+      </div>
     </section>
 
     <section id="budget-panel" class="panel hidden" role="tabpanel" aria-labelledby="tab-budget">
@@ -152,28 +150,56 @@
       </form>
     </section>
 
-    <section id="admin-panel" class="panel hidden" role="tabpanel" aria-labelledby="tab-admin">
-      <p class="hint">Only visible to the server's designated admin account. Actions here affect other people's accounts and data — think before you click.</p>
-
-      <div class="admin-section">
-        <div class="admin-section-header">
-          <h2 class="sub-title">Chat history</h2>
-          <span id="admin-message-count" class="admin-count"></span>
+    <section id="settings-panel" class="panel hidden" role="tabpanel" aria-labelledby="tab-settings">
+      <div class="settings-section">
+        <h2 class="sub-title">Account</h2>
+        <div class="settings-actions">
+          <button id="backup-btn" class="secondary-btn" type="button">⬇ Backup</button>
+          <button id="restore-btn" class="secondary-btn" type="button">⬆ Restore</button>
+          <input id="restore-file-input" type="file" accept=".json,application/json" class="hidden">
+          <button id="change-password-btn" class="secondary-btn" type="button">🔑 Change password</button>
+          <button id="logout" class="secondary-btn danger-btn" type="button">Log out</button>
         </div>
-        <button id="clear-chat-btn" class="secondary-btn danger-btn" type="button">Clear all chat history</button>
       </div>
 
-      <div class="admin-section">
-        <h2 class="sub-title">Registered users</h2>
-        <div id="admin-users" class="admin-users-list"></div>
-      </div>
+      <div id="admin-settings-section" class="hidden">
+        <p class="hint">The section below is only visible to the server's designated admin account. Actions here affect other people's accounts and data — think before you click.</p>
 
-      <div class="admin-section">
-        <h2 class="sub-title">Activity log</h2>
-        <div id="admin-activity" class="admin-activity-list"></div>
+        <div class="admin-section">
+          <div class="admin-section-header">
+            <h2 class="sub-title">Chat history</h2>
+            <span id="admin-message-count" class="admin-count"></span>
+          </div>
+          <button id="clear-chat-btn" class="secondary-btn danger-btn" type="button">Clear all chat history</button>
+        </div>
+
+        <div class="admin-section">
+          <h2 class="sub-title">Registered users</h2>
+          <div id="admin-users" class="admin-users-list"></div>
+        </div>
+
+        <div class="admin-section">
+          <h2 class="sub-title">Activity log</h2>
+          <div id="admin-activity" class="admin-activity-list"></div>
+        </div>
       </div>
     </section>
   </main>
+
+  <nav class="bottom-nav" role="tablist" aria-label="Sections">
+    <button id="tab-vault" class="bottom-nav-item active" role="tab" aria-selected="true" aria-controls="vault-panel" type="button">
+      <span class="bottom-nav-icon">🔑</span><span class="bottom-nav-label">Vault</span>
+    </button>
+    <button id="tab-budget" class="bottom-nav-item" role="tab" aria-selected="false" aria-controls="budget-panel" type="button">
+      <span class="bottom-nav-icon">💰</span><span class="bottom-nav-label">Budget</span>
+    </button>
+    <button id="tab-chat" class="bottom-nav-item" role="tab" aria-selected="false" aria-controls="chat-panel" type="button">
+      <span class="bottom-nav-icon">💬</span><span class="bottom-nav-label">Chat</span>
+    </button>
+    <button id="tab-settings" class="bottom-nav-item" role="tab" aria-selected="false" aria-controls="settings-panel" type="button">
+      <span class="bottom-nav-icon">⚙️</span><span class="bottom-nav-label">Settings</span>
+    </button>
+  </nav>
 
   <dialog id="change-password-dialog" class="cp-dialog">
     <form id="change-password-form">
