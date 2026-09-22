@@ -178,6 +178,24 @@ script to periodically copy the `passvault/data` folder somewhere safe
 (another machine, encrypted cloud storage) — it's the only copy of
 your encrypted vault.
 
+## Installing it as an app (PWA)
+
+PassVault works as an installable Progressive Web App on both Android and
+iOS, launching full-screen without browser chrome once installed.
+
+- **Android (Chrome):** open the site, tap the "Install" prompt (or menu →
+  Install app).
+- **iOS (Safari):** there's no install prompt — open the site, tap Share,
+  then **Add to Home Screen**.
+
+A service worker caches only the static app shell (HTML/CSS/JS/icons) so
+the app launches instantly and reliably even on a flaky connection. It
+never caches anything under `/api/` — your vault, budget, and chat always
+require a live network request, exactly as before. This keeps the
+zero-knowledge design intact: nothing sensitive is ever written to the
+browser's Cache Storage, and the encryption key still only ever lives in
+page memory, cleared on refresh/close just like today.
+
 ## Using the app
 
 - **Register** with a username, an invite code (ask whoever runs this

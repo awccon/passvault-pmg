@@ -1333,3 +1333,14 @@ window.addEventListener('beforeunload', (e) => {
     await Api.logout();
   }
 })();
+
+// Registers the app-shell service worker (see sw.js) so the app installs
+// as a PWA and launches reliably. It only ever caches static shell
+// files — vault/auth/chat requests always go straight to the network.
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch((err) => {
+      console.warn('Service worker registration failed:', err);
+    });
+  });
+}
