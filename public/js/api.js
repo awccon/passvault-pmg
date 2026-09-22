@@ -95,6 +95,16 @@ const Api = {
     const data = await r.json();
     if (!r.ok) throw new Error(data.error || 'Failed to load activity log');
     return data;
+  },
+  async savePrefs(prefs) {
+    const r = await fetch('/api/account/prefs', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(prefs)
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || 'Failed to save preferences');
+    return data;
   }
 };
 window.Api = Api;

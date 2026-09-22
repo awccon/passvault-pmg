@@ -250,7 +250,13 @@ app.post('/api/login', loginLimiter, async (req, res) => {
     user.lastLoginAt = new Date().toISOString();
     writeJSON(USERS_FILE, users);
     logActivity('login', user.username);
-    res.json({ ok: true, username: user.username, isAdmin: isAdminUsername(user.username) });
+    res.json({
+      ok: true,
+      username: user.username,
+      isAdmin: isAdminUsername(user.username),
+      theme: user.theme || null,
+      language: user.language || null
+    });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Server error' });
@@ -263,9 +269,39 @@ app.post('/api/logout', (req, res) => {
 
 app.get('/api/me', (req, res) => {
   if (req.session && req.session.userId) {
-    return res.json({ loggedIn: true, username: req.session.username, isAdmin: isAdminUsername(req.session.username) });
+    const users = readJSON(USERS_FILE);
+    const user = users.find(u => u.id === req.session.userId);
+    return res.json({
+      loggedIn: true,
+      username: req.session.username,
+      isAdmin: isAdminUsername(req.session.username),
+      theme: user && user.theme || null,
+      language: user && user.language || null
+    });
   }
   res.json({ loggedIn: false });
+});
+
+// Theme/language are per-account, plaintext, non-sensitive UI
+// preferences (not secrets, unlike everything in the vault) — stored
+// directly on the user record so they follow the account to any
+// device/browser instead of being stuck in one browser's localStorage.
+const THEME_VALUES = ['light', 'dark', 'system'];
+app.put('/api/account/prefs', requireAuth, (req, res) => {
+  const { theme, language } = req.body || {};
+  if (theme !== undefined && !THEME_VALUES.includes(theme)) {
+    return res.status(400).json({ error: 'Invalid theme' });
+  }
+  if (language !== undefined && !/^[a-z]{2,10}$/.test(language)) {
+    return res.status(400).json({ error: 'Invalid language' });
+  }
+  const users = readJSON(USERS_FILE);
+  const idx = users.findIndex(u => u.id === req.session.userId);
+  if (idx === -1) return res.status(401).json({ error: 'Not logged in' });
+  if (theme !== undefined) users[idx].theme = theme;
+  if (language !== undefined) users[idx].language = language;
+  writeJSON(USERS_FILE, users);
+  res.json({ ok: true });
 });
 
 // --- Vault (always opaque encrypted blob to the server) ---
