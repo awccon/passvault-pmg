@@ -243,21 +243,26 @@ authForm.addEventListener('submit', async (e) => {
     return;
   }
   try {
+    let loginResult;
     if (mode === 'register') {
       const inviteCode = inviteCodeInput.value.trim();
       const salt = randomSaltB64Fn();
       const authProof = await deriveAuthProofFn(password, salt);
       await Api.register(username, salt, authProof, inviteCode);
-      const loginResult = await Api.login(username, authProof); // establish the server session
-      isAdmin = !!loginResult.isAdmin;
+      loginResult = await Api.login(username, authProof); // establish the server session
       encKey = await deriveEncKeyFn(password, salt);
     } else {
       const { salt } = await Api.getSalt(username);
       const authProof = await deriveAuthProofFn(password, salt);
-      const loginResult = await Api.login(username, authProof);
-      isAdmin = !!loginResult.isAdmin;
+      loginResult = await Api.login(username, authProof);
       encKey = await deriveEncKeyFn(password, salt);
     }
+    isAdmin = !!loginResult.isAdmin;
+    // This account's own saved theme/language (if it's ever set one)
+    // take over from whatever was showing pre-login — which might be a
+    // different account's preference left over in this browser.
+    if (loginResult.theme) applyTheme(loginResult.theme);
+    if (loginResult.language) PVI18N.setLanguage(loginResult.language);
     passwordInput.value = '';
     passwordInput.type = 'password';
     masterPasswordToggle.setAttribute('aria-label', t('common.showPassword'));
@@ -339,7 +344,13 @@ function applyTheme(mode) {
 }
 
 themeButtons.forEach(btn => {
-  btn.addEventListener('click', () => applyTheme(btn.getAttribute('data-theme-choice')));
+  btn.addEventListener('click', () => {
+    const choice = btn.getAttribute('data-theme-choice');
+    applyTheme(choice);
+    // Only reachable from the Settings panel, i.e. only while logged
+    // in — safe to persist to this account without an extra guard.
+    Api.savePrefs({ theme: choice }).catch(() => { /* stays correct locally; will retry next change */ });
+  });
 });
 
 // Reflect the button state to match whatever the early inline <script>
@@ -361,6 +372,7 @@ const languageSelect = document.getElementById('language-select');
 languageSelect.value = PVI18N.getLanguage();
 languageSelect.addEventListener('change', () => {
   PVI18N.setLanguage(languageSelect.value);
+  Api.savePrefs({ language: languageSelect.value }).catch(() => { /* stays correct locally; will retry next change */ });
 });
 
 // Re-render whatever dynamic content is currently visible so a language
