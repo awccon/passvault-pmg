@@ -1,3 +1,4 @@
+const t = window.PVI18N.t;
 const PVCrypto = window.PassVaultCrypto;
 const deriveAuthProofFn = PVCrypto.deriveAuthProof;
 const deriveEncKeyFn = PVCrypto.deriveEncKey;
@@ -71,6 +72,7 @@ const vaultPanel = document.getElementById('vault-panel');
 const budgetPanel = document.getElementById('budget-panel');
 const chatPanel = document.getElementById('chat-panel');
 const morePanel = document.getElementById('more-panel');
+const themeButtons = document.querySelectorAll('[data-theme-choice]');
 const adminSettingsSection = document.getElementById('admin-settings-section');
 const adminUsersEl = document.getElementById('admin-users');
 const adminMessageCountEl = document.getElementById('admin-message-count');
@@ -173,19 +175,23 @@ generatorCopyBtn.addEventListener('click', async () => {
     generatorOutput.select();
     document.execCommand('copy');
   }
-  announce('Generated password copied to clipboard. It will clear automatically in 20 seconds.');
+  announce(t('generator.copiedAnnounce'));
   clearClipboardAfter(value, 20000);
 });
 
+function updateAuthModeText() {
+  document.getElementById('auth-title').textContent = mode === 'login' ? t('auth.login') : t('auth.createAccount');
+  document.getElementById('auth-submit').textContent = mode === 'login' ? t('auth.login') : t('auth.createAccount');
+  modeToggle.textContent = mode === 'login' ? t('auth.needAccount') : t('auth.haveAccount');
+}
+
 modeToggle.addEventListener('click', () => {
   mode = mode === 'login' ? 'register' : 'login';
-  document.getElementById('auth-title').textContent = mode === 'login' ? 'Log in' : 'Create account';
-  document.getElementById('auth-submit').textContent = mode === 'login' ? 'Log in' : 'Create account';
-  modeToggle.textContent = mode === 'login' ? "Need an account? Register" : 'Already have an account? Log in';
+  updateAuthModeText();
   authError.textContent = '';
   pwStrengthEl.classList.add('hidden');
   passwordInput.type = 'password';
-  masterPasswordToggle.setAttribute('aria-label', 'Show password');
+  masterPasswordToggle.setAttribute('aria-label', t('common.showPassword'));
   masterPasswordToggle.setAttribute('aria-pressed', 'false');
   inviteCodeField.classList.toggle('hidden', mode !== 'register');
   inviteCodeInput.required = mode === 'register';
@@ -198,11 +204,11 @@ function estimatePasswordStrength(pw) {
   const variety = [/[a-z]/, /[A-Z]/, /[0-9]/, /[^A-Za-z0-9]/].filter(re => re.test(pw)).length;
   const lengthScore = Math.min(pw.length / 20, 1);
   const score = lengthScore * 0.7 + (variety / 4) * 0.3;
-  if (pw.length < 8) return { label: 'Too short', score: 0.08, level: '' };
-  if (score < 0.4) return { label: 'Weak', score, level: '' };
-  if (score < 0.65) return { label: 'Fair', score, level: 'fair' };
-  if (score < 0.85) return { label: 'Good', score, level: 'good' };
-  return { label: 'Strong', score, level: 'strong' };
+  if (pw.length < 8) return { label: t('strength.tooShort'), score: 0.08, level: '' };
+  if (score < 0.4) return { label: t('strength.weak'), score, level: '' };
+  if (score < 0.65) return { label: t('strength.fair'), score, level: 'fair' };
+  if (score < 0.85) return { label: t('strength.good'), score, level: 'good' };
+  return { label: t('strength.strong'), score, level: 'strong' };
 }
 
 function updateStrengthMeter(pw, containerEl, fillEl, labelEl) {
@@ -211,7 +217,7 @@ function updateStrengthMeter(pw, containerEl, fillEl, labelEl) {
   const { label, score, level } = estimatePasswordStrength(pw);
   fillEl.style.width = Math.round(score * 100) + '%';
   fillEl.className = 'pw-strength-fill' + (level ? ' ' + level : '');
-  labelEl.textContent = 'Master password strength: ' + label;
+  labelEl.textContent = t('strength.prefix', { label });
 }
 
 passwordInput.addEventListener('input', () => {
@@ -222,7 +228,7 @@ passwordInput.addEventListener('input', () => {
 masterPasswordToggle.addEventListener('click', () => {
   const nowVisible = passwordInput.type === 'password';
   passwordInput.type = nowVisible ? 'text' : 'password';
-  masterPasswordToggle.setAttribute('aria-label', nowVisible ? 'Hide password' : 'Show password');
+  masterPasswordToggle.setAttribute('aria-label', nowVisible ? t('common.hidePassword') : t('common.showPassword'));
   masterPasswordToggle.setAttribute('aria-pressed', String(nowVisible));
 });
 
@@ -233,7 +239,7 @@ authForm.addEventListener('submit', async (e) => {
   const password = passwordInput.value;
   if (!username || !password) return;
   if (mode === 'register' && password.length < 8) {
-    authError.textContent = 'Master password should be at least 8 characters — this is the ONE password you must never forget.';
+    authError.textContent = t('auth.pwTooShort');
     return;
   }
   try {
@@ -254,13 +260,13 @@ authForm.addEventListener('submit', async (e) => {
     }
     passwordInput.value = '';
     passwordInput.type = 'password';
-    masterPasswordToggle.setAttribute('aria-label', 'Show password');
+    masterPasswordToggle.setAttribute('aria-label', t('common.showPassword'));
     masterPasswordToggle.setAttribute('aria-pressed', 'false');
     inviteCodeInput.value = '';
     pwStrengthEl.classList.add('hidden');
     await enterVault(username);
   } catch (err) {
-    authError.textContent = err.message || 'Something went wrong.';
+    authError.textContent = err.message || t('common.somethingWrong');
   }
 });
 
@@ -312,6 +318,70 @@ document.querySelectorAll('.more-back-btn').forEach(btn => {
   btn.addEventListener('click', closeMorePage);
 });
 
+// --- Theme (light / dark / system) ---
+// A per-device UI preference, not vault data — stored in localStorage,
+// not the encrypted blob, so it applies even on the login screen.
+
+function resolveEffectiveTheme(mode) {
+  if (mode === 'system') {
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+  return mode;
+}
+
+function applyTheme(mode) {
+  try { localStorage.setItem('pv-theme', mode); } catch (e) { /* private browsing, etc. — theme just won't persist */ }
+  document.documentElement.setAttribute('data-theme', mode);
+  const effective = resolveEffectiveTheme(mode);
+  const themeColorMeta = document.querySelector('meta[name="theme-color"]');
+  if (themeColorMeta) themeColorMeta.setAttribute('content', effective === 'light' ? '#f4f6fb' : '#0f1420');
+  themeButtons.forEach(btn => btn.setAttribute('aria-pressed', String(btn.getAttribute('data-theme-choice') === mode)));
+}
+
+themeButtons.forEach(btn => {
+  btn.addEventListener('click', () => applyTheme(btn.getAttribute('data-theme-choice')));
+});
+
+// Reflect the button state to match whatever the early inline <script>
+// in index.html already applied (it runs before this file loads, to
+// avoid a flash of the wrong theme).
+applyTheme(document.documentElement.getAttribute('data-theme') || 'dark');
+
+// If the user is in "system" mode, follow live OS theme changes without
+// needing a reload (CSS already does this via the media query; this
+// keeps the meta theme-color and button state in sync too).
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+  if (document.documentElement.getAttribute('data-theme') === 'system') applyTheme('system');
+});
+
+// --- Language ---
+// Same per-device, localStorage-based approach as theme (see i18n.js).
+
+const languageSelect = document.getElementById('language-select');
+languageSelect.value = PVI18N.getLanguage();
+languageSelect.addEventListener('change', () => {
+  PVI18N.setLanguage(languageSelect.value);
+});
+
+// Re-render whatever dynamic content is currently visible so a language
+// switch mid-session doesn't require a reload to take effect everywhere.
+window.addEventListener('pv-lang-changed', () => {
+  languageSelect.value = PVI18N.getLanguage();
+  updateAuthModeText();
+  if (encKey) {
+    renderEntriesList();
+    if (currentEntryId !== null) renderEntryDetail();
+    renderExpenses();
+    renderIncomes();
+    renderNotes();
+    renderAddresses();
+    renderGoals();
+    renderTodos();
+    if (isAdmin) loadAdminData();
+    if (chatLoaded) renderFullChatHistory();
+  }
+});
+
 logoutBtn.addEventListener('click', async () => {
   clearTimeout(saveTimer);
   if (dirty) await saveVaultNow(); // flush any pending debounced save first
@@ -333,12 +403,10 @@ logoutBtn.addEventListener('click', async () => {
   authView.classList.remove('hidden');
   authForm.reset();
   passwordInput.type = 'password';
-  masterPasswordToggle.setAttribute('aria-label', 'Show password');
+  masterPasswordToggle.setAttribute('aria-label', t('common.showPassword'));
   masterPasswordToggle.setAttribute('aria-pressed', 'false');
   mode = 'login';
-  document.getElementById('auth-title').textContent = 'Log in';
-  document.getElementById('auth-submit').textContent = 'Log in';
-  modeToggle.textContent = 'Need an account? Register';
+  updateAuthModeText();
   inviteCodeField.classList.add('hidden');
   inviteCodeInput.required = false;
 });
@@ -371,11 +439,11 @@ changePasswordForm.addEventListener('submit', async (e) => {
   const newPassword = cpNewInput.value;
   const confirmPassword = cpConfirmInput.value;
   if (newPassword.length < 8) {
-    cpError.textContent = 'New master password should be at least 8 characters.';
+    cpError.textContent = t('cp.tooShort');
     return;
   }
   if (newPassword !== confirmPassword) {
-    cpError.textContent = 'New master password and confirmation don\'t match.';
+    cpError.textContent = t('cp.mismatch');
     return;
   }
   cpSubmitBtn.disabled = true;
@@ -390,7 +458,7 @@ changePasswordForm.addEventListener('submit', async (e) => {
     try {
       decryptedVault = stored.blob ? await decryptVaultFn(stored, candidateEncKey) : vault;
     } catch (err) {
-      cpError.textContent = 'Current master password is incorrect.';
+      cpError.textContent = t('cp.wrongCurrent');
       cpSubmitBtn.disabled = false;
       return;
     }
@@ -409,9 +477,9 @@ changePasswordForm.addEventListener('submit', async (e) => {
 
     encKey = newEncKey; // future autosaves must use the new key
     changePasswordDialog.close();
-    announce('Master password changed.');
+    announce(t('cp.changed'));
   } catch (err) {
-    cpError.textContent = err.message || 'Something went wrong.';
+    cpError.textContent = err.message || t('common.somethingWrong');
   } finally {
     cpSubmitBtn.disabled = false;
   }
@@ -456,9 +524,9 @@ backupBtn.addEventListener('click', async () => {
     };
     const dateStr = new Date().toISOString().slice(0, 10);
     downloadJSON(backupObj, 'passvault-backup-' + username + '-' + dateStr + '.json');
-    announce('Vault backed up.');
+    announce(t('backup.success'));
   } catch (err) {
-    announce(err.message || 'Backup failed.');
+    announce(err.message || t('backup.failed'));
   }
 });
 
@@ -476,11 +544,11 @@ restoreFileInput.addEventListener('change', async () => {
     const text = await file.text();
     parsed = JSON.parse(text);
   } catch (e) {
-    alert('That file isn\'t readable JSON — is it a PassVault backup?');
+    alert(t('restore.badJson'));
     return;
   }
   if (parsed.app !== BACKUP_APP_ID || parsed.version !== BACKUP_VERSION || !parsed.salt || !parsed.iv || !parsed.blob) {
-    alert('That doesn\'t look like a PassVault backup file.');
+    alert(t('restore.badFormat'));
     return;
   }
 
@@ -488,8 +556,10 @@ restoreFileInput.addEventListener('change', async () => {
   restoreForm.reset();
   restoreError.textContent = '';
   restoreSubmitBtn.disabled = false;
-  const info = 'Backup for "' + parsed.username + '"' +
-    (parsed.exportedAt ? ', exported ' + new Date(parsed.exportedAt).toLocaleString() : '') + '.';
+  const info = t('restore.info', {
+    username: parsed.username,
+    exported: parsed.exportedAt ? t('restore.infoExported', { date: new Date(parsed.exportedAt).toLocaleString() }) : ''
+  });
   restoreFileInfoEl.textContent = info;
   restoreDialog.showModal();
   restorePasswordInput.focus();
@@ -512,7 +582,7 @@ restoreForm.addEventListener('submit', async (e) => {
     try {
       restoredVault = await decryptVaultFn(pendingRestore, restoreEncKey);
     } catch (err) {
-      restoreError.textContent = 'Incorrect password, or this backup file is corrupted.';
+      restoreError.textContent = t('restore.wrongPassword');
       restoreSubmitBtn.disabled = false;
       return;
     }
@@ -526,11 +596,9 @@ restoreForm.addEventListener('submit', async (e) => {
     if (!restoredVault.goals) restoredVault.goals = [];
     if (!restoredVault.todos) restoredVault.todos = [];
 
-    const currentCount = vault.entries.length + ' entries, ' + vault.budget.expenses.length + ' expenses';
-    const backupCount = restoredVault.entries.length + ' entries, ' + restoredVault.budget.expenses.length + ' expenses';
-    const proceed = confirm(
-      'Replace your current vault (' + currentCount + ') with this backup (' + backupCount + ')? This cannot be undone.'
-    );
+    const currentCount = t('restore.countSummary', { entries: vault.entries.length, expenses: vault.budget.expenses.length });
+    const backupCount = t('restore.countSummary', { entries: restoredVault.entries.length, expenses: restoredVault.budget.expenses.length });
+    const proceed = confirm(t('restore.confirm', { current: currentCount, backup: backupCount }));
     if (!proceed) {
       restoreSubmitBtn.disabled = false;
       return;
@@ -552,9 +620,9 @@ restoreForm.addEventListener('submit', async (e) => {
     renderTodos();
     pendingRestore = null;
     restoreDialog.close();
-    announce('Vault restored successfully.');
+    announce(t('restore.success'));
   } catch (err) {
-    restoreError.textContent = err.message || 'Something went wrong.';
+    restoreError.textContent = err.message || t('common.somethingWrong');
   } finally {
     restoreSubmitBtn.disabled = false;
   }
@@ -567,7 +635,7 @@ async function enterVault(username) {
     try {
       vault = await decryptVaultFn(stored, encKey);
     } catch (e) {
-      authError.textContent = 'Could not decrypt vault — wrong master password?';
+      authError.textContent = t('auth.decryptFailed');
       encKey = null;
       return;
     }
@@ -604,7 +672,7 @@ function newEntry() {
     id: crypto.randomUUID(),
     email: '',
     username: '',
-    passwords: [{ id: crypto.randomUUID(), label: 'Password 1', value: '' }],
+    passwords: [{ id: crypto.randomUUID(), label: t('vault.passwordN', { n: 1 }), value: '' }],
     keyQuestions: []
   };
 }
@@ -621,12 +689,12 @@ function renderEntriesList() {
   if (vault.entries.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'expenses-empty';
-    empty.textContent = 'No entries yet. Click "+ Add email address" to start.';
+    empty.textContent = t('vault.emptyNoEntries');
     entriesListEl.appendChild(empty);
   } else if (filtered.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'expenses-empty';
-    empty.textContent = 'No entries match your search.';
+    empty.textContent = t('vault.emptySearch');
     entriesListEl.appendChild(empty);
   } else {
     filtered.forEach(entry => entriesListEl.appendChild(renderEntryListRow(entry)));
@@ -637,7 +705,10 @@ function renderEntryListRow(entry) {
   const row = document.createElement('button');
   row.type = 'button';
   row.className = 'entry-list-row';
-  row.setAttribute('aria-label', 'Open ' + (entry.email || 'entry with no email') + (entry.username ? ', username ' + entry.username : ''));
+  row.setAttribute('aria-label', t('vault.openEntryAria', {
+    email: entry.email || t('vault.entryNoEmailAria'),
+    userPart: entry.username ? t('vault.openEntryUserPart', { username: entry.username }) : ''
+  }));
   row.addEventListener('click', () => openEntryDetail(entry.id));
 
   const icon = document.createElement('span');
@@ -649,7 +720,7 @@ function renderEntryListRow(entry) {
   info.className = 'entry-list-info';
   const emailEl = document.createElement('span');
   emailEl.className = 'entry-list-email';
-  emailEl.textContent = entry.email || '(no email)';
+  emailEl.textContent = entry.email || t('vault.noEmail');
   info.appendChild(emailEl);
   if (entry.username) {
     const userEl = document.createElement('span');
@@ -699,8 +770,8 @@ function renderEntry(entry, idx) {
   header.className = 'entry-header';
   const emailInput = document.createElement('input');
   emailInput.type = 'text';
-  emailInput.placeholder = 'Email address (this is the header)';
-  emailInput.setAttribute('aria-label', 'Email address (section header)');
+  emailInput.placeholder = t('vault.emailPlaceholder');
+  emailInput.setAttribute('aria-label', t('vault.emailHeaderAria'));
   emailInput.autocomplete = 'off';
   emailInput.value = entry.email;
   emailInput.className = 'email-input';
@@ -708,10 +779,10 @@ function renderEntry(entry, idx) {
   const removeBtn = document.createElement('button');
   removeBtn.className = 'icon-btn danger';
   removeBtn.textContent = '✕';
-  removeBtn.title = 'Remove this section';
-  removeBtn.setAttribute('aria-label', 'Remove section for ' + (entry.email || 'this entry'));
+  removeBtn.title = t('vault.removeSectionTitle');
+  removeBtn.setAttribute('aria-label', t('vault.removeSectionAria', { email: entry.email || t('vault.noEmail') }));
   removeBtn.addEventListener('click', () => {
-    if (confirm('Remove this section for ' + (entry.email || '(no email)') + '? This cannot be undone.')) {
+    if (confirm(t('vault.removeSectionConfirm', { email: entry.email || t('vault.noEmail') }))) {
       vault.entries.splice(idx, 1);
       markDirty();
       closeEntryDetail();
@@ -726,7 +797,7 @@ function renderEntry(entry, idx) {
 
   // Username
   const userLabel = document.createElement('label');
-  userLabel.textContent = 'Username';
+  userLabel.textContent = t('common.username');
   userLabel.htmlFor = 'username-' + entry.id;
   const userInput = document.createElement('input');
   userInput.type = 'text';
@@ -742,7 +813,7 @@ function renderEntry(entry, idx) {
   pwSection.className = 'sub-section';
   const pwTitle = document.createElement('div');
   pwTitle.className = 'sub-title';
-  pwTitle.textContent = 'Passwords (up to 5)';
+  pwTitle.textContent = t('vault.passwordsTitle');
   pwSection.appendChild(pwTitle);
 
   const pwList = document.createElement('div');
@@ -753,10 +824,10 @@ function renderEntry(entry, idx) {
 
   const addPwBtn = document.createElement('button');
   addPwBtn.className = 'link-btn';
-  addPwBtn.textContent = '+ Add password';
+  addPwBtn.textContent = t('vault.addPassword');
   addPwBtn.addEventListener('click', () => {
     if (entry.passwords.length >= 5) return;
-    const newPw = { id: crypto.randomUUID(), label: 'Password ' + (entry.passwords.length + 1), value: '' };
+    const newPw = { id: crypto.randomUUID(), label: t('vault.passwordN', { n: entry.passwords.length + 1 }), value: '' };
     entry.passwords.push(newPw);
     editingPasswordIds.add(newPw.id);
     markDirty();
@@ -771,7 +842,7 @@ function renderEntry(entry, idx) {
   kqSection.className = 'sub-section';
   const kqTitle = document.createElement('div');
   kqTitle.className = 'sub-title';
-  kqTitle.textContent = 'Key Questions';
+  kqTitle.textContent = t('vault.keyQuestionsTitle');
   kqSection.appendChild(kqTitle);
 
   entry.keyQuestions.forEach((kq, kqIdx) => {
@@ -780,7 +851,7 @@ function renderEntry(entry, idx) {
 
   const addKqBtn = document.createElement('button');
   addKqBtn.className = 'link-btn';
-  addKqBtn.textContent = '+ Add key question';
+  addKqBtn.textContent = t('vault.addKeyQuestion');
   addKqBtn.addEventListener('click', () => {
     entry.keyQuestions.push({ question: '', answer: '' });
     markDirty();
@@ -814,63 +885,63 @@ function renderPasswordRow(entry, pw, pwIdx) {
   const labelInput = document.createElement('input');
   labelInput.type = 'text';
   labelInput.className = 'pw-label';
-  labelInput.setAttribute('aria-label', 'Label for password ' + (pwIdx + 1));
+  labelInput.setAttribute('aria-label', t('vault.pwLabelAria', { n: pwIdx + 1 }));
   labelInput.autocomplete = 'off';
   labelInput.readOnly = !isEditing;
-  labelInput.value = pw.label || ('Password ' + (pwIdx + 1));
+  labelInput.value = pw.label || t('vault.passwordN', { n: pwIdx + 1 });
   labelInput.addEventListener('input', () => { pw.label = labelInput.value; markDirty(); });
 
   const valueInput = document.createElement('input');
   valueInput.type = 'password';
   valueInput.className = 'pw-value';
-  valueInput.setAttribute('aria-label', (pw.label || ('Password ' + (pwIdx + 1))) + ' value');
+  valueInput.setAttribute('aria-label', t('vault.pwValueAria', { label: pw.label || t('vault.passwordN', { n: pwIdx + 1 }) }));
   valueInput.autocomplete = 'off';
   valueInput.readOnly = !isEditing;
   valueInput.value = pw.value;
-  valueInput.placeholder = 'Password';
+  valueInput.placeholder = t('common.password');
   valueInput.addEventListener('input', () => { pw.value = valueInput.value; markDirty(); });
 
   const generateBtn = document.createElement('button');
   generateBtn.className = 'icon-btn';
   generateBtn.textContent = '🎲';
-  generateBtn.title = 'Generate a random password';
-  generateBtn.setAttribute('aria-label', 'Generate a random password for ' + (pw.label || ('password ' + (pwIdx + 1))));
+  generateBtn.title = t('vault.generateTitle');
+  generateBtn.setAttribute('aria-label', t('vault.generateAria', { label: pw.label || t('vault.passwordN', { n: pwIdx + 1 }) }));
   generateBtn.addEventListener('click', () => {
     if (pw.value) {
-      if (!confirm('Are you sure you want to generate a new password? This will replace the existing password.')) return;
+      if (!confirm(t('vault.regenConfirm'))) return;
     }
     const generated = generatePasswordFn(generatorOptions.length, generatorOptions);
     if (!generated) {
-      announce('Select at least one character type in the password generator first.');
+      announce(t('generator.selectTypeFirst'));
       return;
     }
     pw.value = generated;
     valueInput.value = generated;
     valueInput.type = 'text'; // reveal it briefly so there's a chance to see what was generated
-    toggleBtn.setAttribute('aria-label', 'Hide password');
+    toggleBtn.setAttribute('aria-label', t('common.hidePassword'));
     toggleBtn.setAttribute('aria-pressed', 'true');
     markDirty();
-    announce('Generated a new password for ' + (pw.label || ('password ' + (pwIdx + 1))) + '.');
+    announce(t('vault.generatedAnnounce', { label: pw.label || t('vault.passwordN', { n: pwIdx + 1 }) }));
   });
 
   const toggleBtn = document.createElement('button');
   toggleBtn.className = 'icon-btn';
   toggleBtn.textContent = '👁';
-  toggleBtn.title = 'Show/hide';
-  toggleBtn.setAttribute('aria-label', 'Show password');
+  toggleBtn.title = t('common.showHide');
+  toggleBtn.setAttribute('aria-label', t('common.showPassword'));
   toggleBtn.setAttribute('aria-pressed', 'false');
   toggleBtn.addEventListener('click', () => {
     const nowVisible = valueInput.type === 'password';
     valueInput.type = nowVisible ? 'text' : 'password';
-    toggleBtn.setAttribute('aria-label', nowVisible ? 'Hide password' : 'Show password');
+    toggleBtn.setAttribute('aria-label', nowVisible ? t('common.hidePassword') : t('common.showPassword'));
     toggleBtn.setAttribute('aria-pressed', String(nowVisible));
   });
 
   const copyBtn = document.createElement('button');
   copyBtn.className = 'icon-btn';
   copyBtn.textContent = '📋';
-  copyBtn.title = 'Copy password';
-  copyBtn.setAttribute('aria-label', 'Copy password to clipboard');
+  copyBtn.title = t('generator.copyTitle');
+  copyBtn.setAttribute('aria-label', t('vault.copyPasswordAria'));
   copyBtn.addEventListener('click', async () => {
     if (!pw.value) return;
     const copiedValue = pw.value;
@@ -890,7 +961,7 @@ function renderPasswordRow(entry, pw, pwIdx) {
     const original = copyBtn.textContent;
     copyBtn.textContent = '✅';
     setTimeout(() => { copyBtn.textContent = original; }, 1200);
-    announce('Password copied to clipboard. It will clear automatically in 20 seconds.');
+    announce(t('vault.copiedAnnounce'));
     // Clear the clipboard after a delay, but only if it still holds
     // what we put there (avoid clobbering something the user copied since).
     clearClipboardAfter(copiedValue, 20000);
@@ -899,8 +970,8 @@ function renderPasswordRow(entry, pw, pwIdx) {
   const editToggleBtn = document.createElement('button');
   editToggleBtn.className = 'icon-btn';
   editToggleBtn.textContent = isEditing ? '✓' : '✏️';
-  editToggleBtn.title = isEditing ? 'Done editing' : 'Edit';
-  editToggleBtn.setAttribute('aria-label', (isEditing ? 'Done editing ' : 'Edit ') + (pw.label || ('password ' + (pwIdx + 1))));
+  editToggleBtn.title = isEditing ? t('common.doneEditing') : t('common.edit');
+  editToggleBtn.setAttribute('aria-label', t('vault.editToggleAria', { action: isEditing ? t('common.doneEditing') : t('common.edit'), label: pw.label || t('vault.passwordN', { n: pwIdx + 1 }) }));
   editToggleBtn.setAttribute('aria-pressed', String(isEditing));
   editToggleBtn.addEventListener('click', () => {
     if (isEditing) editingPasswordIds.delete(pw.id); else editingPasswordIds.add(pw.id);
@@ -910,11 +981,11 @@ function renderPasswordRow(entry, pw, pwIdx) {
   const removeBtn = document.createElement('button');
   removeBtn.className = 'icon-btn danger';
   removeBtn.textContent = '✕';
-  removeBtn.title = 'Remove this password';
-  removeBtn.setAttribute('aria-label', 'Remove ' + (pw.label || ('password ' + (pwIdx + 1))));
+  removeBtn.title = t('vault.removePasswordTitle');
+  removeBtn.setAttribute('aria-label', t('vault.removePasswordAria', { label: pw.label || t('vault.passwordN', { n: pwIdx + 1 }) }));
   removeBtn.addEventListener('click', () => {
-    const label = pw.label || ('Password ' + (pwIdx + 1));
-    if (!confirm('Remove "' + label + '"? This cannot be undone.')) return;
+    const label = pw.label || t('vault.passwordN', { n: pwIdx + 1 });
+    if (!confirm(t('vault.removePasswordConfirm', { label }))) return;
     editingPasswordIds.delete(pw.id);
     entry.passwords.splice(pwIdx, 1);
     markDirty();
@@ -937,16 +1008,16 @@ function renderKeyQuestionRow(entry, kq, kqIdx) {
 
   const qInput = document.createElement('input');
   qInput.type = 'text';
-  qInput.placeholder = 'Question (e.g. Mother\'s maiden name)';
-  qInput.setAttribute('aria-label', 'Security question ' + (kqIdx + 1));
+  qInput.placeholder = t('vault.kqPlaceholder');
+  qInput.setAttribute('aria-label', t('vault.kqAria', { n: kqIdx + 1 }));
   qInput.autocomplete = 'off';
   qInput.value = kq.question;
   qInput.addEventListener('input', () => { kq.question = qInput.value; markDirty(); });
 
   const aInput = document.createElement('input');
   aInput.type = 'text';
-  aInput.placeholder = 'Answer';
-  aInput.setAttribute('aria-label', 'Answer to security question ' + (kqIdx + 1));
+  aInput.placeholder = t('vault.kqAnswerPlaceholder');
+  aInput.setAttribute('aria-label', t('vault.kqAnswerAria', { n: kqIdx + 1 }));
   aInput.autocomplete = 'off';
   aInput.value = kq.answer;
   aInput.addEventListener('input', () => { kq.answer = aInput.value; markDirty(); });
@@ -954,10 +1025,10 @@ function renderKeyQuestionRow(entry, kq, kqIdx) {
   const removeBtn = document.createElement('button');
   removeBtn.className = 'icon-btn danger';
   removeBtn.textContent = '✕';
-  removeBtn.title = 'Remove this key question';
-  removeBtn.setAttribute('aria-label', 'Remove security question ' + (kqIdx + 1));
+  removeBtn.title = t('vault.removeKqTitle');
+  removeBtn.setAttribute('aria-label', t('vault.removeKqAria', { n: kqIdx + 1 }));
   removeBtn.addEventListener('click', () => {
-    if (!confirm('Remove this security question? This cannot be undone.')) return;
+    if (!confirm(t('vault.removeKqConfirm'))) return;
     entry.keyQuestions.splice(kqIdx, 1);
     markDirty();
     renderEntryDetail();
@@ -1012,7 +1083,7 @@ function renderExpenses() {
   if (expenses.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'expenses-empty';
-    empty.textContent = 'No expenses yet. Click "+ Add expense" to start tracking.';
+    empty.textContent = t('budget.emptyExpenses');
     expensesEl.appendChild(empty);
   } else {
     expenses.forEach((expense, idx) => {
@@ -1028,7 +1099,7 @@ function renderIncomes() {
   if (incomes.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'expenses-empty';
-    empty.textContent = 'No income yet. Click "+ Add income" to start tracking.';
+    empty.textContent = t('budget.emptyIncome');
     incomesEl.appendChild(empty);
   } else {
     incomes.forEach((income, idx) => {
@@ -1060,7 +1131,7 @@ function renderBudgetSummary() {
 function renderExpenseChart(expenses) {
   const byCategory = new Map();
   expenses.forEach(e => {
-    const key = (e.category || '').trim() || 'Uncategorized';
+    const key = (e.category || '').trim() || t('budget.uncategorized');
     byCategory.set(key, (byCategory.get(key) || 0) + (Number(e.amount) || 0));
   });
 
@@ -1068,7 +1139,7 @@ function renderExpenseChart(expenses) {
   if (byCategory.size === 0) {
     const empty = document.createElement('div');
     empty.className = 'chart-empty';
-    empty.textContent = 'Nothing to chart yet.';
+    empty.textContent = t('budget.emptyChart');
     budgetChartEl.appendChild(empty);
     return;
   }
@@ -1109,15 +1180,15 @@ function renderExpenseRow(expense, idx) {
   const dateInput = document.createElement('input');
   dateInput.type = 'date';
   dateInput.className = 'expense-date';
-  dateInput.setAttribute('aria-label', 'Expense date');
+  dateInput.setAttribute('aria-label', t('budget.expenseDateAria'));
   dateInput.value = expense.date || '';
   dateInput.addEventListener('input', () => { expense.date = dateInput.value; markDirty(); });
 
   const categoryInput = document.createElement('input');
   categoryInput.type = 'text';
   categoryInput.className = 'expense-category';
-  categoryInput.placeholder = 'Category';
-  categoryInput.setAttribute('aria-label', 'Expense category');
+  categoryInput.placeholder = t('budget.categoryPlaceholder');
+  categoryInput.setAttribute('aria-label', t('budget.expenseCategoryAria'));
   categoryInput.autocomplete = 'off';
   categoryInput.value = expense.category || '';
   categoryInput.addEventListener('input', () => {
@@ -1129,8 +1200,8 @@ function renderExpenseRow(expense, idx) {
   const descInput = document.createElement('input');
   descInput.type = 'text';
   descInput.className = 'expense-description';
-  descInput.placeholder = 'Description';
-  descInput.setAttribute('aria-label', 'Expense description');
+  descInput.placeholder = t('common.descriptionPlaceholder');
+  descInput.setAttribute('aria-label', t('budget.expenseDescAria'));
   descInput.autocomplete = 'off';
   descInput.value = expense.description || '';
   descInput.addEventListener('input', () => { expense.description = descInput.value; markDirty(); });
@@ -1141,7 +1212,7 @@ function renderExpenseRow(expense, idx) {
   amountInput.placeholder = '0.00';
   amountInput.step = '0.01';
   amountInput.min = '0';
-  amountInput.setAttribute('aria-label', 'Expense amount');
+  amountInput.setAttribute('aria-label', t('budget.expenseAmountAria'));
   amountInput.autocomplete = 'off';
   amountInput.value = expense.amount === 0 ? '' : expense.amount;
   amountInput.addEventListener('input', () => {
@@ -1153,10 +1224,10 @@ function renderExpenseRow(expense, idx) {
   const removeBtn = document.createElement('button');
   removeBtn.className = 'icon-btn danger';
   removeBtn.textContent = '✕';
-  removeBtn.title = 'Remove this expense';
-  removeBtn.setAttribute('aria-label', 'Remove expense' + (expense.description ? ': ' + expense.description : ' ' + (idx + 1)));
+  removeBtn.title = t('budget.removeExpenseTitle');
+  removeBtn.setAttribute('aria-label', t('budget.removeExpenseAria', { detail: expense.description ? t('budget.removeExpenseAriaDetail', { description: expense.description }) : ' ' + (idx + 1) }));
   removeBtn.addEventListener('click', () => {
-    if (!confirm('Remove this expense? This cannot be undone.')) return;
+    if (!confirm(t('budget.removeExpenseConfirm'))) return;
     vault.budget.expenses.splice(idx, 1);
     markDirty();
     renderExpenses();
@@ -1177,15 +1248,15 @@ function renderIncomeRow(income, idx) {
   const dateInput = document.createElement('input');
   dateInput.type = 'date';
   dateInput.className = 'expense-date';
-  dateInput.setAttribute('aria-label', 'Income date');
+  dateInput.setAttribute('aria-label', t('budget.incomeDateAria'));
   dateInput.value = income.date || '';
   dateInput.addEventListener('input', () => { income.date = dateInput.value; markDirty(); });
 
   const sourceInput = document.createElement('input');
   sourceInput.type = 'text';
   sourceInput.className = 'expense-category';
-  sourceInput.placeholder = 'Source';
-  sourceInput.setAttribute('aria-label', 'Income source');
+  sourceInput.placeholder = t('budget.sourcePlaceholder');
+  sourceInput.setAttribute('aria-label', t('budget.incomeSourceAria'));
   sourceInput.autocomplete = 'off';
   sourceInput.value = income.source || '';
   sourceInput.addEventListener('input', () => { income.source = sourceInput.value; markDirty(); });
@@ -1193,8 +1264,8 @@ function renderIncomeRow(income, idx) {
   const descInput = document.createElement('input');
   descInput.type = 'text';
   descInput.className = 'expense-description';
-  descInput.placeholder = 'Description';
-  descInput.setAttribute('aria-label', 'Income description');
+  descInput.placeholder = t('common.descriptionPlaceholder');
+  descInput.setAttribute('aria-label', t('budget.incomeDescAria'));
   descInput.autocomplete = 'off';
   descInput.value = income.description || '';
   descInput.addEventListener('input', () => { income.description = descInput.value; markDirty(); });
@@ -1205,7 +1276,7 @@ function renderIncomeRow(income, idx) {
   amountInput.placeholder = '0.00';
   amountInput.step = '0.01';
   amountInput.min = '0';
-  amountInput.setAttribute('aria-label', 'Income amount');
+  amountInput.setAttribute('aria-label', t('budget.incomeAmountAria'));
   amountInput.autocomplete = 'off';
   amountInput.value = income.amount === 0 ? '' : income.amount;
   amountInput.addEventListener('input', () => {
@@ -1217,10 +1288,10 @@ function renderIncomeRow(income, idx) {
   const removeBtn = document.createElement('button');
   removeBtn.className = 'icon-btn danger';
   removeBtn.textContent = '✕';
-  removeBtn.title = 'Remove this income';
-  removeBtn.setAttribute('aria-label', 'Remove income' + (income.description ? ': ' + income.description : ' ' + (idx + 1)));
+  removeBtn.title = t('budget.removeIncomeTitle');
+  removeBtn.setAttribute('aria-label', t('budget.removeIncomeAria', { detail: income.description ? t('budget.removeExpenseAriaDetail', { description: income.description }) : ' ' + (idx + 1) }));
   removeBtn.addEventListener('click', () => {
-    if (!confirm('Remove this income entry? This cannot be undone.')) return;
+    if (!confirm(t('budget.removeIncomeConfirm'))) return;
     vault.budget.incomes.splice(idx, 1);
     markDirty();
     renderIncomes();
@@ -1272,7 +1343,7 @@ function renderTodos() {
   if (todos.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'expenses-empty';
-    empty.textContent = 'No tasks yet. Add one above.';
+    empty.textContent = t('todo.empty');
     todoListEl.appendChild(empty);
     return;
   }
@@ -1287,7 +1358,7 @@ function renderTodoRow(todo) {
   checkbox.type = 'checkbox';
   checkbox.className = 'todo-checkbox';
   checkbox.checked = todo.done;
-  checkbox.setAttribute('aria-label', (todo.done ? 'Mark incomplete: ' : 'Mark complete: ') + (todo.text || 'task'));
+  checkbox.setAttribute('aria-label', t(todo.done ? 'todo.markIncompleteAria' : 'todo.markCompleteAria', { text: todo.text || t('todo.taskFallback') }));
   checkbox.addEventListener('change', () => {
     todo.done = checkbox.checked;
     markDirty();
@@ -1297,8 +1368,8 @@ function renderTodoRow(todo) {
   const textInput = document.createElement('input');
   textInput.type = 'text';
   textInput.className = 'todo-text';
-  textInput.placeholder = 'Task';
-  textInput.setAttribute('aria-label', 'Task text');
+  textInput.placeholder = t('todo.taskPlaceholder');
+  textInput.setAttribute('aria-label', t('todo.taskTextAria'));
   textInput.autocomplete = 'off';
   textInput.value = todo.text || '';
   textInput.addEventListener('input', () => { todo.text = textInput.value; markDirty(); });
@@ -1306,21 +1377,21 @@ function renderTodoRow(todo) {
   const dueInput = document.createElement('input');
   dueInput.type = 'date';
   dueInput.className = 'todo-due';
-  dueInput.setAttribute('aria-label', 'Due date (optional)');
+  dueInput.setAttribute('aria-label', t('common.dueDateAria'));
   dueInput.value = todo.dueDate || '';
   dueInput.addEventListener('input', () => { todo.dueDate = dueInput.value; markDirty(); });
 
   const removeBtn = document.createElement('button');
   removeBtn.className = 'icon-btn danger';
   removeBtn.textContent = '✕';
-  removeBtn.title = 'Delete this task';
-  removeBtn.setAttribute('aria-label', 'Delete task' + (todo.text ? ': ' + todo.text : ''));
+  removeBtn.title = t('todo.deleteTitle');
+  removeBtn.setAttribute('aria-label', t('todo.deleteAria', { detail: todo.text ? t('todo.deleteAriaDetail', { text: todo.text }) : '' }));
   removeBtn.addEventListener('click', () => {
-    const idx = vault.todos.findIndex(t => t.id === todo.id);
+    const idx = vault.todos.findIndex(x => x.id === todo.id);
     if (idx !== -1) vault.todos.splice(idx, 1);
     markDirty();
     renderTodos();
-    announce('Task deleted.');
+    announce(t('todo.deletedAnnounce'));
   });
 
   row.appendChild(checkbox);
@@ -1338,7 +1409,7 @@ newTodoInput.addEventListener('keydown', (e) => {
   newTodoInput.value = '';
   markDirty();
   renderTodos();
-  announce('Task added.');
+  announce(t('todo.addedAnnounce'));
 });
 
 // --- Goals ---
@@ -1361,7 +1432,7 @@ function renderGoals() {
   if (goals.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'expenses-empty';
-    empty.textContent = 'No goals yet. Click "+ Add goal" to start tracking one.';
+    empty.textContent = t('goals.empty');
     goalsListEl.appendChild(empty);
     return;
   }
@@ -1378,8 +1449,8 @@ function renderGoalRow(goal, idx) {
   const titleInput = document.createElement('input');
   titleInput.type = 'text';
   titleInput.className = 'goal-title';
-  titleInput.placeholder = 'Goal title';
-  titleInput.setAttribute('aria-label', 'Goal title');
+  titleInput.placeholder = t('goals.titlePlaceholder');
+  titleInput.setAttribute('aria-label', t('goals.titleAria'));
   titleInput.autocomplete = 'off';
   titleInput.value = goal.title || '';
   titleInput.addEventListener('input', () => { goal.title = titleInput.value; markDirty(); });
@@ -1387,10 +1458,10 @@ function renderGoalRow(goal, idx) {
   const removeBtn = document.createElement('button');
   removeBtn.className = 'icon-btn danger';
   removeBtn.textContent = '✕';
-  removeBtn.title = 'Delete this goal';
-  removeBtn.setAttribute('aria-label', 'Delete goal' + (goal.title ? ': ' + goal.title : ' ' + (idx + 1)));
+  removeBtn.title = t('goals.deleteTitle');
+  removeBtn.setAttribute('aria-label', t('goals.deleteAria', { detail: goal.title ? t('goals.deleteAriaDetail', { title: goal.title }) : t('goals.deleteAriaIndex', { n: idx + 1 }) }));
   removeBtn.addEventListener('click', () => {
-    if (!confirm('Remove this goal? This cannot be undone.')) return;
+    if (!confirm(t('goals.removeConfirm'))) return;
     vault.goals.splice(idx, 1);
     markDirty();
     renderGoals();
@@ -1402,8 +1473,8 @@ function renderGoalRow(goal, idx) {
   const descInput = document.createElement('input');
   descInput.type = 'text';
   descInput.className = 'goal-description';
-  descInput.placeholder = 'Description (optional)';
-  descInput.setAttribute('aria-label', 'Goal description');
+  descInput.placeholder = t('common.descriptionOptionalPlaceholder');
+  descInput.setAttribute('aria-label', t('goals.descAria'));
   descInput.autocomplete = 'off';
   descInput.value = goal.description || '';
   descInput.addEventListener('input', () => { goal.description = descInput.value; markDirty(); });
@@ -1414,7 +1485,7 @@ function renderGoalRow(goal, idx) {
   const dateInput = document.createElement('input');
   dateInput.type = 'date';
   dateInput.className = 'goal-target-date';
-  dateInput.setAttribute('aria-label', 'Target date (optional)');
+  dateInput.setAttribute('aria-label', t('goals.targetDateAria'));
   dateInput.value = goal.targetDate || '';
   dateInput.addEventListener('input', () => { goal.targetDate = dateInput.value; markDirty(); });
 
@@ -1425,9 +1496,9 @@ function renderGoalRow(goal, idx) {
   const targetCheckbox = document.createElement('input');
   targetCheckbox.type = 'checkbox';
   targetCheckbox.checked = hasTarget;
-  targetCheckbox.setAttribute('aria-label', 'Track a numeric target for this goal');
+  targetCheckbox.setAttribute('aria-label', t('goals.trackTargetAria'));
   targetToggle.appendChild(targetCheckbox);
-  targetToggle.appendChild(document.createTextNode(' Numeric target'));
+  targetToggle.appendChild(document.createTextNode(t('goals.numericTargetLabel')));
 
   metaLine.appendChild(dateInput);
   metaLine.appendChild(targetToggle);
@@ -1448,7 +1519,7 @@ function renderGoalRow(goal, idx) {
       const currentInput = document.createElement('input');
       currentInput.type = 'number';
       currentInput.className = 'goal-current';
-      currentInput.setAttribute('aria-label', 'Current progress');
+      currentInput.setAttribute('aria-label', t('goals.currentProgressAria'));
       currentInput.value = goal.current || 0;
       currentInput.addEventListener('input', () => {
         goal.current = parseFloat(currentInput.value) || 0;
@@ -1457,12 +1528,12 @@ function renderGoalRow(goal, idx) {
       });
 
       const sep = document.createElement('span');
-      sep.textContent = ' of ';
+      sep.textContent = t('goals.ofSeparator');
 
       const targetInput = document.createElement('input');
       targetInput.type = 'number';
       targetInput.className = 'goal-target';
-      targetInput.setAttribute('aria-label', 'Target amount');
+      targetInput.setAttribute('aria-label', t('goals.targetAmountAria'));
       targetInput.value = goal.target || '';
       targetInput.addEventListener('input', () => {
         goal.target = parseFloat(targetInput.value) || 0;
@@ -1490,11 +1561,11 @@ function renderGoalRow(goal, idx) {
     } else {
       const statusSelect = document.createElement('select');
       statusSelect.className = 'goal-status';
-      statusSelect.setAttribute('aria-label', 'Goal status');
-      [['not-started', 'Not started'], ['in-progress', 'In progress'], ['done', 'Done']].forEach(([value, label]) => {
+      statusSelect.setAttribute('aria-label', t('goals.statusAria'));
+      [['not-started', 'goals.statusNotStarted'], ['in-progress', 'goals.statusInProgress'], ['done', 'goals.statusDone']].forEach(([value, key]) => {
         const opt = document.createElement('option');
         opt.value = value;
-        opt.textContent = label;
+        opt.textContent = t(key);
         if (goal.status === value) opt.selected = true;
         statusSelect.appendChild(opt);
       });
@@ -1571,7 +1642,7 @@ function renderAddresses() {
   if (addresses.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'expenses-empty';
-    empty.textContent = 'No address records yet. Click "+ Add address record" to start tracking where you\'ve used your home address.';
+    empty.textContent = t('addresses.empty');
     addressesListEl.appendChild(empty);
     return;
   }
@@ -1588,8 +1659,8 @@ function renderAddressRow(addr, idx) {
   const placeInput = document.createElement('input');
   placeInput.type = 'text';
   placeInput.className = 'address-place';
-  placeInput.placeholder = 'Company / place / department';
-  placeInput.setAttribute('aria-label', 'Place name');
+  placeInput.placeholder = t('addresses.placePlaceholder');
+  placeInput.setAttribute('aria-label', t('addresses.placeAria'));
   placeInput.autocomplete = 'off';
   placeInput.value = addr.place || '';
   placeInput.addEventListener('input', () => { addr.place = placeInput.value; markDirty(); });
@@ -1597,10 +1668,10 @@ function renderAddressRow(addr, idx) {
   const removeBtn = document.createElement('button');
   removeBtn.className = 'icon-btn danger';
   removeBtn.textContent = '✕';
-  removeBtn.title = 'Delete this address record';
-  removeBtn.setAttribute('aria-label', 'Delete address record' + (addr.place ? ': ' + addr.place : ' ' + (idx + 1)));
+  removeBtn.title = t('addresses.deleteTitle');
+  removeBtn.setAttribute('aria-label', t('addresses.deleteAria', { detail: addr.place ? t('addresses.deleteAriaDetail', { place: addr.place }) : t('addresses.deleteAriaIndex', { n: idx + 1 }) }));
   removeBtn.addEventListener('click', () => {
-    if (!confirm('Remove this address record? This cannot be undone.')) return;
+    if (!confirm(t('addresses.removeConfirm'))) return;
     vault.addresses.splice(idx, 1);
     markDirty();
     renderAddresses();
@@ -1612,8 +1683,8 @@ function renderAddressRow(addr, idx) {
   const addressInput = document.createElement('input');
   addressInput.type = 'text';
   addressInput.className = 'address-street';
-  addressInput.placeholder = 'Address used';
-  addressInput.setAttribute('aria-label', 'Address used');
+  addressInput.placeholder = t('addresses.addressPlaceholder');
+  addressInput.setAttribute('aria-label', t('addresses.addressAria'));
   addressInput.autocomplete = 'off';
   addressInput.value = addr.address || '';
   addressInput.addEventListener('input', () => { addr.address = addressInput.value; markDirty(); });
@@ -1624,8 +1695,8 @@ function renderAddressRow(addr, idx) {
   const stateInput = document.createElement('input');
   stateInput.type = 'text';
   stateInput.className = 'address-state';
-  stateInput.placeholder = 'State';
-  stateInput.setAttribute('aria-label', 'State');
+  stateInput.placeholder = t('addresses.statePlaceholder');
+  stateInput.setAttribute('aria-label', t('addresses.stateAria'));
   stateInput.setAttribute('list', 'us-states-list');
   stateInput.autocomplete = 'off';
   stateInput.value = addr.state || '';
@@ -1634,8 +1705,8 @@ function renderAddressRow(addr, idx) {
   const categoryInput = document.createElement('input');
   categoryInput.type = 'text';
   categoryInput.className = 'address-category';
-  categoryInput.placeholder = 'Category (optional)';
-  categoryInput.setAttribute('aria-label', 'Category');
+  categoryInput.placeholder = t('addresses.categoryPlaceholder');
+  categoryInput.setAttribute('aria-label', t('addresses.categoryAria'));
   categoryInput.autocomplete = 'off';
   categoryInput.value = addr.category || '';
   categoryInput.addEventListener('input', () => { addr.category = categoryInput.value; markDirty(); });
@@ -1643,7 +1714,7 @@ function renderAddressRow(addr, idx) {
   const dateInput = document.createElement('input');
   dateInput.type = 'date';
   dateInput.className = 'address-date-used';
-  dateInput.setAttribute('aria-label', 'Date used (optional)');
+  dateInput.setAttribute('aria-label', t('addresses.dateUsedAria'));
   dateInput.value = addr.dateUsed || '';
   dateInput.addEventListener('input', () => { addr.dateUsed = dateInput.value; markDirty(); });
 
@@ -1657,8 +1728,8 @@ function renderAddressRow(addr, idx) {
   const phoneInput = document.createElement('input');
   phoneInput.type = 'tel';
   phoneInput.className = 'address-phone';
-  phoneInput.placeholder = 'Phone (optional)';
-  phoneInput.setAttribute('aria-label', 'Phone number');
+  phoneInput.placeholder = t('addresses.phonePlaceholder');
+  phoneInput.setAttribute('aria-label', t('addresses.phoneAria'));
   phoneInput.autocomplete = 'off';
   phoneInput.value = addr.phone || '';
   phoneInput.addEventListener('input', () => {
@@ -1670,17 +1741,17 @@ function renderAddressRow(addr, idx) {
   const phoneLink = document.createElement('a');
   phoneLink.className = 'address-phone-link';
   phoneLink.textContent = '📞';
-  phoneLink.title = 'Call this number';
+  phoneLink.title = t('addresses.callTitle');
 
   const copyPhoneBtn = document.createElement('button');
   copyPhoneBtn.className = 'icon-btn';
   copyPhoneBtn.textContent = '⧉';
-  copyPhoneBtn.title = 'Copy phone number';
-  copyPhoneBtn.setAttribute('aria-label', 'Copy phone number');
+  copyPhoneBtn.title = t('addresses.copyPhoneTitle');
+  copyPhoneBtn.setAttribute('aria-label', t('addresses.copyPhoneAria'));
   copyPhoneBtn.addEventListener('click', async () => {
     if (!addr.phone) return;
     await navigator.clipboard.writeText(addr.phone);
-    announce('Phone number copied.');
+    announce(t('addresses.copiedAnnounce'));
   });
 
   function updatePhoneLink() {
@@ -1697,11 +1768,11 @@ function renderAddressRow(addr, idx) {
 
   const statusSelect = document.createElement('select');
   statusSelect.className = 'address-status';
-  statusSelect.setAttribute('aria-label', 'Status');
-  [['active', 'Currently used'], ['moved-out', 'Moved out / no longer used']].forEach(([value, label]) => {
+  statusSelect.setAttribute('aria-label', t('addresses.statusAria'));
+  [['active', 'addresses.statusActive'], ['moved-out', 'addresses.statusMovedOut']].forEach(([value, key]) => {
     const opt = document.createElement('option');
     opt.value = value;
-    opt.textContent = label;
+    opt.textContent = t(key);
     if ((addr.status || 'active') === value) opt.selected = true;
     statusSelect.appendChild(opt);
   });
@@ -1747,7 +1818,7 @@ function renderNotes() {
   if (notes.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'expenses-empty';
-    empty.textContent = 'No notes yet. Click "+ Add note" to jot something down.';
+    empty.textContent = t('notes.empty');
     notesListEl.appendChild(empty);
     return;
   }
@@ -1765,8 +1836,8 @@ function renderNoteCard(note) {
   const titleInput = document.createElement('input');
   titleInput.type = 'text';
   titleInput.className = 'note-title';
-  titleInput.placeholder = 'Title (optional)';
-  titleInput.setAttribute('aria-label', 'Note title');
+  titleInput.placeholder = t('notes.titlePlaceholder');
+  titleInput.setAttribute('aria-label', t('notes.titleAria'));
   titleInput.autocomplete = 'off';
   titleInput.value = note.title || '';
   titleInput.addEventListener('input', () => {
@@ -1778,10 +1849,10 @@ function renderNoteCard(note) {
   const removeBtn = document.createElement('button');
   removeBtn.className = 'icon-btn danger';
   removeBtn.textContent = '✕';
-  removeBtn.title = 'Delete this note';
-  removeBtn.setAttribute('aria-label', 'Delete note' + (note.title ? ': ' + note.title : ''));
+  removeBtn.title = t('notes.deleteTitle');
+  removeBtn.setAttribute('aria-label', t('notes.deleteAria', { detail: note.title ? t('notes.deleteAriaDetail', { title: note.title }) : '' }));
   removeBtn.addEventListener('click', () => {
-    if (!confirm('Delete this note? This cannot be undone.')) return;
+    if (!confirm(t('notes.removeConfirm'))) return;
     const idx = vault.notes.findIndex(n => n.id === note.id);
     if (idx !== -1) vault.notes.splice(idx, 1);
     markDirty();
@@ -1793,8 +1864,8 @@ function renderNoteCard(note) {
 
   const bodyInput = document.createElement('textarea');
   bodyInput.className = 'note-body';
-  bodyInput.placeholder = 'Write a note…';
-  bodyInput.setAttribute('aria-label', 'Note body');
+  bodyInput.placeholder = t('notes.bodyPlaceholder');
+  bodyInput.setAttribute('aria-label', t('notes.bodyAria'));
   bodyInput.value = note.body || '';
   bodyInput.addEventListener('input', () => {
     note.body = bodyInput.value;
@@ -1809,7 +1880,7 @@ function renderNoteCard(note) {
     swatch.type = 'button';
     swatch.className = 'note-color-swatch' + (note.color === color ? ' selected' : '');
     swatch.style.background = color;
-    swatch.setAttribute('aria-label', 'Set note color');
+    swatch.setAttribute('aria-label', t('notes.setColorAria'));
     swatch.addEventListener('click', () => {
       note.color = color;
       card.style.background = color;
@@ -1865,7 +1936,7 @@ function renderFullChatHistory() {
   if (chatMessages.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'chat-empty';
-    empty.textContent = 'No messages yet — say hello!';
+    empty.textContent = t('chat.empty');
     chatMessagesEl.appendChild(empty);
   } else {
     chatMessages.forEach(m => chatMessagesEl.appendChild(renderChatMessage(m)));
@@ -1931,7 +2002,7 @@ chatForm.addEventListener('submit', async (e) => {
     appendChatMessages([message]);
     chatInput.value = '';
   } catch (err) {
-    announce(err.message || 'Failed to send message');
+    announce(err.message || t('chat.sendFailed'));
   } finally {
     chatInput.disabled = false;
     chatInput.focus();
@@ -1944,15 +2015,15 @@ async function loadAdminData() {
   try {
     const { users, messageCount } = await Api.getAdminUsers();
     renderAdminUsers(users);
-    adminMessageCountEl.textContent = messageCount + (messageCount === 1 ? ' message' : ' messages');
+    adminMessageCountEl.textContent = t(messageCount === 1 ? 'admin.messageCountOne' : 'admin.messageCountMany', { count: messageCount });
   } catch (err) {
-    announce(err.message || 'Failed to load admin data.');
+    announce(err.message || t('admin.loadUsersFailed'));
   }
   try {
     const { activity } = await Api.getAdminActivity();
     renderAdminActivity(activity);
   } catch (err) {
-    announce(err.message || 'Failed to load activity log.');
+    announce(err.message || t('admin.loadActivityFailed'));
   }
 }
 
@@ -1961,7 +2032,7 @@ function renderAdminUsers(users) {
   if (users.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'admin-empty';
-    empty.textContent = 'No registered users.';
+    empty.textContent = t('admin.noUsers');
     adminUsersEl.appendChild(empty);
     return;
   }
@@ -1981,9 +2052,9 @@ function renderAdminUserRow(u) {
   metaEl.className = 'admin-user-meta';
   const joined = new Date(u.createdAt).toLocaleDateString();
   const lastLogin = u.lastLoginAt
-    ? 'last login ' + new Date(u.lastLoginAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
-    : 'never logged in';
-  metaEl.textContent = 'Joined ' + joined + ' · ' + lastLogin + (u.hasVaultData ? '' : ' · no vault data yet');
+    ? t('admin.lastLogin', { date: new Date(u.lastLoginAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) })
+    : t('admin.neverLoggedIn');
+  metaEl.textContent = t('admin.joinedMeta', { joined, lastLogin, noVault: u.hasVaultData ? '' : t('admin.noVaultYet') });
   info.appendChild(nameEl);
   info.appendChild(metaEl);
   row.appendChild(info);
@@ -1992,22 +2063,22 @@ function renderAdminUserRow(u) {
   if (isSelf) {
     const badge = document.createElement('span');
     badge.className = 'admin-you-badge';
-    badge.textContent = 'You (admin)';
+    badge.textContent = t('admin.youBadge');
     row.appendChild(badge);
   } else {
     const delBtn = document.createElement('button');
     delBtn.className = 'icon-btn danger';
     delBtn.textContent = '✕';
-    delBtn.title = 'Delete this user';
-    delBtn.setAttribute('aria-label', 'Delete user ' + u.username);
+    delBtn.title = t('admin.deleteUserTitle');
+    delBtn.setAttribute('aria-label', t('admin.deleteUserAria', { username: u.username }));
     delBtn.addEventListener('click', async () => {
-      if (!confirm('Permanently delete the account "' + u.username + '" and their vault? This cannot be undone.')) return;
+      if (!confirm(t('admin.deleteUserConfirm', { username: u.username }))) return;
       try {
         await Api.deleteAdminUser(u.id);
-        announce('Deleted user ' + u.username + '.');
+        announce(t('admin.deletedUserAnnounce', { username: u.username }));
         loadAdminData();
       } catch (err) {
-        announce(err.message || 'Failed to delete user.');
+        announce(err.message || t('admin.deleteUserFailed'));
       }
     });
     row.appendChild(delBtn);
@@ -2016,12 +2087,12 @@ function renderAdminUserRow(u) {
 }
 
 const ACTIVITY_LABELS = {
-  login: e => e.username + ' logged in',
-  login_failed: e => 'Failed login attempt for "' + e.username + '"',
-  register: e => e.username + ' registered',
-  user_deleted: e => e.username + ' was deleted by ' + (e.deletedBy || 'admin'),
-  chat_cleared: e => 'Chat history cleared by ' + e.username,
-  password_changed: e => e.username + ' changed their master password'
+  login: e => t('activity.login', { user: e.username }),
+  login_failed: e => t('activity.loginFailed', { user: e.username }),
+  register: e => t('activity.register', { user: e.username }),
+  user_deleted: e => t('activity.userDeleted', { user: e.username, by: e.deletedBy || t('admin.adminFallback') }),
+  chat_cleared: e => t('activity.chatCleared', { user: e.username }),
+  password_changed: e => t('activity.passwordChanged', { user: e.username })
 };
 const ACTIVITY_ICONS = {
   login: '🔓',
@@ -2037,7 +2108,7 @@ function renderAdminActivity(activity) {
   if (activity.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'admin-empty';
-    empty.textContent = 'No activity recorded yet.';
+    empty.textContent = t('admin.noActivity');
     adminActivityEl.appendChild(empty);
     return;
   }
@@ -2058,22 +2129,22 @@ function renderAdminActivity(activity) {
 }
 
 clearChatBtn.addEventListener('click', async () => {
-  if (!confirm('Clear all chat history for everyone? This cannot be undone.')) return;
+  if (!confirm(t('admin.clearChatConfirm'))) return;
   try {
     await Api.clearChatHistory();
     chatMessages = [];
     lastMessageTime = null;
     renderFullChatHistory();
-    announce('Chat history cleared.');
+    announce(t('admin.chatClearedAnnounce'));
     loadAdminData();
   } catch (err) {
-    announce(err.message || 'Failed to clear chat history.');
+    announce(err.message || t('admin.clearChatFailed'));
   }
 });
 
 function markDirty() {
   dirty = true;
-  saveStatusEl.textContent = 'Unsaved changes…';
+  saveStatusEl.textContent = t('common.unsavedChanges');
   clearTimeout(saveTimer);
   saveTimer = setTimeout(saveVaultNow, 1200);
 }
@@ -2081,14 +2152,14 @@ function markDirty() {
 async function saveVaultNow() {
   if (!dirty || !encKey) return;
   try {
-    saveStatusEl.textContent = 'Saving…';
+    saveStatusEl.textContent = t('common.saving');
     const { iv, blob } = await encryptVaultFn(vault, encKey);
     await Api.saveVault(iv, blob);
     dirty = false;
-    saveStatusEl.textContent = 'Saved';
+    saveStatusEl.textContent = t('common.saved');
     setTimeout(() => { if (!dirty) saveStatusEl.textContent = ''; }, 1500);
   } catch (e) {
-    saveStatusEl.textContent = 'Save failed — check connection';
+    saveStatusEl.textContent = t('common.saveFailed');
   }
 }
 

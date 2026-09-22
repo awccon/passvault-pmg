@@ -16,45 +16,59 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="apple-mobile-web-app-title" content="PassVault">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+
+<!-- Applied synchronously, before body paints, so a saved "light" choice
+     never flashes dark first (dark is the CSS default — see style.css). -->
+<script>
+(function() {
+  try {
+    var t = localStorage.getItem('pv-theme') || 'dark';
+    document.documentElement.setAttribute('data-theme', t);
+    var dark = t === 'dark' || (t === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    var meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', dark ? '#0f1420' : '#f4f6fb');
+  } catch (e) {}
+})();
+</script>
 </head>
 <body>
 
 <div id="auth-view" class="auth-view">
   <div class="auth-card">
-    <h1>🔐 PassVault</h1>
-    <p class="tagline">Your personal, self-hosted password book.</p>
-    <h2 id="auth-title">Log in</h2>
+    <h1 data-i18n="app.brand">🔐 PassVault</h1>
+    <p class="tagline" data-i18n="auth.tagline">Your personal, self-hosted password book.</p>
+    <h2 id="auth-title" data-i18n="auth.login">Log in</h2>
     <form id="auth-form">
-      <label for="username">Username</label>
+      <label for="username" data-i18n="auth.username">Username</label>
       <input id="username" type="text" autocomplete="username" required>
       <div id="invite-code-field" class="hidden">
-        <label for="invite-code">Invite code</label>
+        <label for="invite-code" data-i18n="auth.inviteCode">Invite code</label>
         <input id="invite-code" type="text" autocomplete="off">
-        <p class="hint">Ask whoever runs this server for an invite code — registration isn't open to everyone.</p>
+        <p class="hint" data-i18n="auth.inviteHint">Ask whoever runs this server for an invite code — registration isn't open to everyone.</p>
       </div>
-      <label for="master-password">Master password</label>
+      <label for="master-password" data-i18n="auth.masterPassword">Master password</label>
       <div class="password-field">
         <input id="master-password" type="password" autocomplete="current-password" required>
-        <button type="button" id="master-password-toggle" class="password-toggle-btn" aria-label="Show password" aria-pressed="false" title="Show/hide password">👁</button>
+        <button type="button" id="master-password-toggle" class="password-toggle-btn" data-i18n-aria-label="common.showPassword" aria-label="Show password" aria-pressed="false" data-i18n-title="auth.showHidePassword" title="Show/hide password">👁</button>
       </div>
       <div id="pw-strength" class="pw-strength hidden" aria-live="polite">
         <div class="pw-strength-bar"><div id="pw-strength-fill" class="pw-strength-fill"></div></div>
         <span id="pw-strength-label" class="pw-strength-label"></span>
       </div>
-      <p class="hint">This master password encrypts everything. There is no "forgot password" — if you lose it, your vault cannot be recovered by anyone, including you hosting the server.</p>
+      <p class="hint" data-i18n="auth.noRecoveryHint">This master password encrypts everything. There is no "forgot password" — if you lose it, your vault cannot be recovered by anyone, including you hosting the server.</p>
       <div id="auth-error" class="error" role="alert"></div>
-      <button id="auth-submit" type="submit">Log in</button>
+      <button id="auth-submit" type="submit" data-i18n="auth.login">Log in</button>
     </form>
-    <button id="mode-toggle" class="link-btn">Need an account? Register</button>
+    <button id="mode-toggle" class="link-btn" data-i18n="auth.needAccount">Need an account? Register</button>
   </div>
 </div>
 
 <div id="vault-view" class="vault-view hidden">
   <header class="topbar">
-    <h1 class="brand">🔐 PassVault</h1>
+    <h1 class="brand" data-i18n="app.brand">🔐 PassVault</h1>
     <div class="topbar-right">
       <span id="save-status" class="save-status" role="status" aria-live="polite"></span>
-      <span>Signed in as <strong id="current-user"></strong></span>
+      <span><span data-i18n="common.signedInAs">Signed in as</span> <strong id="current-user"></strong></span>
     </div>
   </header>
 
@@ -62,34 +76,34 @@
     <section id="vault-panel" class="panel" role="tabpanel" aria-labelledby="tab-vault">
       <div id="vault-list-view">
         <div class="content-toolbar">
-          <button id="add-entry" class="primary-btn">+ Add email address</button>
+          <button id="add-entry" class="primary-btn" data-i18n="vault.addEntry">+ Add email address</button>
         </div>
 
-        <label for="vault-search" class="sr-only">Search your vault</label>
-        <input id="vault-search" type="search" class="vault-search" placeholder="Search by email or username" autocomplete="off">
+        <label for="vault-search" class="sr-only" data-i18n="vault.searchLabel">Search your vault</label>
+        <input id="vault-search" type="search" class="vault-search" data-i18n-placeholder="vault.searchPlaceholder" placeholder="Search by email or username" autocomplete="off">
 
         <div class="generator-card">
           <button id="generator-toggle" class="generator-toggle" aria-expanded="false" aria-controls="generator-body" type="button">
-            <span>🎲 Password Generator</span>
+            <span data-i18n="generator.title">🎲 Password Generator</span>
           </button>
           <div id="generator-body" class="generator-body hidden">
             <div class="generator-output-row">
-              <input id="generator-output" type="text" readonly aria-label="Generated password" class="generator-output">
-              <button id="generator-regenerate" class="icon-btn" type="button" title="Generate a new password" aria-label="Generate a new password">🔄</button>
-              <button id="generator-copy" class="icon-btn" type="button" title="Copy password" aria-label="Copy generated password">📋</button>
+              <input id="generator-output" type="text" readonly data-i18n-aria-label="generator.outputAria" aria-label="Generated password" class="generator-output">
+              <button id="generator-regenerate" class="icon-btn" type="button" data-i18n-title="generator.regenerate" title="Generate a new password" data-i18n-aria-label="generator.regenerate" aria-label="Generate a new password">🔄</button>
+              <button id="generator-copy" class="icon-btn" type="button" data-i18n-title="generator.copyTitle" title="Copy password" data-i18n-aria-label="generator.copyAria" aria-label="Copy generated password">📋</button>
             </div>
             <div class="generator-options">
               <div class="generator-length-row">
-                <label for="generator-length">Length: <span id="generator-length-value">20</span></label>
+                <label for="generator-length"><span data-i18n="generator.lengthLabel">Length:</span> <span id="generator-length-value">20</span></label>
                 <input id="generator-length" type="range" min="8" max="64" value="20">
               </div>
               <div class="generator-checkboxes">
-                <label><input type="checkbox" id="opt-upper" checked> Uppercase (A-Z)</label>
-                <label><input type="checkbox" id="opt-lower" checked> Lowercase (a-z)</label>
-                <label><input type="checkbox" id="opt-numbers" checked> Numbers (0-9)</label>
-                <label><input type="checkbox" id="opt-symbols" checked> Symbols (!@#$…)</label>
+                <label><input type="checkbox" id="opt-upper" checked> <span data-i18n="generator.upper">Uppercase (A-Z)</span></label>
+                <label><input type="checkbox" id="opt-lower" checked> <span data-i18n="generator.lower">Lowercase (a-z)</span></label>
+                <label><input type="checkbox" id="opt-numbers" checked> <span data-i18n="generator.numbers">Numbers (0-9)</span></label>
+                <label><input type="checkbox" id="opt-symbols" checked> <span data-i18n="generator.symbols">Symbols (!@#$…)</span></label>
               </div>
-              <p id="generator-warning" class="generator-warning hidden" role="alert">Select at least one character type.</p>
+              <p id="generator-warning" class="generator-warning hidden" role="alert" data-i18n="generator.warning">Select at least one character type.</p>
             </div>
           </div>
         </div>
@@ -98,55 +112,55 @@
       </div>
 
       <div id="vault-detail-view" class="hidden">
-        <button id="vault-back-btn" class="back-btn" type="button">‹ Back to Vault</button>
+        <button id="vault-back-btn" class="back-btn" type="button" data-i18n="vault.backToVault">‹ Back to Vault</button>
         <div id="entries"></div>
       </div>
     </section>
 
     <section id="budget-panel" class="panel hidden" role="tabpanel" aria-labelledby="tab-budget">
       <div class="content-toolbar">
-        <button id="add-income" class="primary-btn">+ Add income</button>
-        <button id="add-expense" class="primary-btn">+ Add expense</button>
+        <button id="add-income" class="primary-btn" data-i18n="budget.addIncome">+ Add income</button>
+        <button id="add-expense" class="primary-btn" data-i18n="budget.addExpense">+ Add expense</button>
       </div>
 
       <div class="budget-summary budget-summary-3">
         <div class="summary-card">
-          <span class="summary-label">Total income</span>
+          <span class="summary-label" data-i18n="budget.totalIncome">Total income</span>
           <span id="budget-income-total" class="summary-value positive">0.00</span>
         </div>
         <div class="summary-card">
-          <span class="summary-label">Total expenses</span>
+          <span class="summary-label" data-i18n="budget.totalExpenses">Total expenses</span>
           <span id="budget-total" class="summary-value negative">0.00</span>
         </div>
         <div class="summary-card">
-          <span class="summary-label">Net</span>
+          <span class="summary-label" data-i18n="budget.net">Net</span>
           <span id="budget-net" class="summary-value">0.00</span>
         </div>
       </div>
 
       <div class="summary-card budget-chart-card">
-        <span class="summary-label">Expenses by category</span>
+        <span class="summary-label" data-i18n="budget.byCategory">Expenses by category</span>
         <div id="budget-chart" class="budget-chart"></div>
       </div>
 
       <div class="budget-section">
-        <h2 class="sub-title">Income</h2>
+        <h2 class="sub-title" data-i18n="budget.incomeSection">Income</h2>
         <div id="incomes" class="expenses-list"></div>
       </div>
 
       <div class="budget-section">
-        <h2 class="sub-title">Expenses</h2>
+        <h2 class="sub-title" data-i18n="budget.expensesSection">Expenses</h2>
         <div id="expenses" class="expenses-list"></div>
       </div>
     </section>
 
     <section id="chat-panel" class="panel hidden" role="tabpanel" aria-labelledby="tab-chat">
-      <p class="hint">This is a shared space — every registered user on this server can read and post here. Unlike the vault, chat messages are stored in plain text, not encrypted.</p>
+      <p class="hint" data-i18n="chat.hint">This is a shared space — every registered user on this server can read and post here. Unlike the vault, chat messages are stored in plain text, not encrypted.</p>
       <div id="chat-messages" class="chat-messages" role="log" aria-live="off" aria-relevant="additions"></div>
       <form id="chat-form" class="chat-form">
-        <label for="chat-input" class="sr-only">Message</label>
-        <input id="chat-input" type="text" maxlength="2000" autocomplete="off" placeholder="Type a message…" required>
-        <button type="submit" class="primary-btn chat-send">Send</button>
+        <label for="chat-input" class="sr-only" data-i18n="chat.messageLabel">Message</label>
+        <input id="chat-input" type="text" maxlength="2000" autocomplete="off" data-i18n-placeholder="chat.placeholder" placeholder="Type a message…" required>
+        <button type="submit" class="primary-btn chat-send" data-i18n="chat.send">Send</button>
       </form>
     </section>
 
@@ -154,157 +168,172 @@
       <div class="entries-list">
         <button type="button" class="entry-list-row" data-more-target="notes-panel">
           <span class="entry-list-icon" aria-hidden="true">📝</span>
-          <span class="entry-list-info"><span class="entry-list-email">Notes</span></span>
+          <span class="entry-list-info"><span class="entry-list-email" data-i18n="nav.notes">Notes</span></span>
           <span class="entry-list-chevron" aria-hidden="true">›</span>
         </button>
         <button type="button" class="entry-list-row" data-more-target="addresses-panel">
           <span class="entry-list-icon" aria-hidden="true">📍</span>
-          <span class="entry-list-info"><span class="entry-list-email">Addresses</span></span>
+          <span class="entry-list-info"><span class="entry-list-email" data-i18n="nav.addresses">Addresses</span></span>
           <span class="entry-list-chevron" aria-hidden="true">›</span>
         </button>
         <button type="button" class="entry-list-row" data-more-target="goals-panel">
           <span class="entry-list-icon" aria-hidden="true">🎯</span>
-          <span class="entry-list-info"><span class="entry-list-email">Goals</span></span>
+          <span class="entry-list-info"><span class="entry-list-email" data-i18n="nav.goals">Goals</span></span>
           <span class="entry-list-chevron" aria-hidden="true">›</span>
         </button>
         <button type="button" class="entry-list-row" data-more-target="todo-panel">
           <span class="entry-list-icon" aria-hidden="true">✅</span>
-          <span class="entry-list-info"><span class="entry-list-email">To-Do</span></span>
+          <span class="entry-list-info"><span class="entry-list-email" data-i18n="nav.todo">To-Do</span></span>
           <span class="entry-list-chevron" aria-hidden="true">›</span>
         </button>
         <button type="button" class="entry-list-row" data-more-target="settings-panel">
           <span class="entry-list-icon" aria-hidden="true">⚙️</span>
-          <span class="entry-list-info"><span class="entry-list-email">Settings</span></span>
+          <span class="entry-list-info"><span class="entry-list-email" data-i18n="nav.settings">Settings</span></span>
           <span class="entry-list-chevron" aria-hidden="true">›</span>
         </button>
       </div>
     </section>
 
     <section id="notes-panel" class="panel hidden more-subpage" aria-label="Notes">
-      <button type="button" class="back-btn more-back-btn">‹ Back to More</button>
+      <button type="button" class="back-btn more-back-btn" data-i18n="common.backToMore">‹ Back to More</button>
       <div class="content-toolbar">
-        <button id="add-note" class="primary-btn">+ Add note</button>
+        <button id="add-note" class="primary-btn" data-i18n="notes.add">+ Add note</button>
       </div>
       <div id="notes-list" class="notes-grid"></div>
     </section>
 
     <section id="addresses-panel" class="panel hidden more-subpage" aria-label="Addresses">
-      <button type="button" class="back-btn more-back-btn">‹ Back to More</button>
+      <button type="button" class="back-btn more-back-btn" data-i18n="common.backToMore">‹ Back to More</button>
       <div class="content-toolbar">
-        <button id="add-address" class="primary-btn">+ Add address record</button>
+        <button id="add-address" class="primary-btn" data-i18n="addresses.add">+ Add address record</button>
       </div>
       <div id="addresses-list" class="entries-list"></div>
     </section>
 
     <section id="goals-panel" class="panel hidden more-subpage" aria-label="Goals">
-      <button type="button" class="back-btn more-back-btn">‹ Back to More</button>
+      <button type="button" class="back-btn more-back-btn" data-i18n="common.backToMore">‹ Back to More</button>
       <div class="content-toolbar">
-        <button id="add-goal" class="primary-btn">+ Add goal</button>
+        <button id="add-goal" class="primary-btn" data-i18n="goals.add">+ Add goal</button>
       </div>
       <div id="goals-list" class="entries-list"></div>
     </section>
 
     <section id="todo-panel" class="panel hidden more-subpage" aria-label="To-Do">
-      <button type="button" class="back-btn more-back-btn">‹ Back to More</button>
+      <button type="button" class="back-btn more-back-btn" data-i18n="common.backToMore">‹ Back to More</button>
       <div class="content-toolbar">
-        <input id="new-todo-input" type="text" class="vault-search" placeholder="Add a task and press Enter" autocomplete="off">
+        <input id="new-todo-input" type="text" class="vault-search" data-i18n-placeholder="todo.placeholder" placeholder="Add a task and press Enter" autocomplete="off">
       </div>
       <div id="todo-list" class="entries-list"></div>
     </section>
 
     <section id="settings-panel" class="panel hidden more-subpage" aria-label="Settings">
-      <button type="button" class="back-btn more-back-btn">‹ Back to More</button>
+      <button type="button" class="back-btn more-back-btn" data-i18n="common.backToMore">‹ Back to More</button>
       <div class="settings-section">
-        <h2 class="sub-title">Account</h2>
+        <h2 class="sub-title" data-i18n="settings.appearance">Appearance</h2>
+        <div class="theme-toggle" role="group" data-i18n-aria-label="settings.themeAria" aria-label="Color theme">
+          <button type="button" class="theme-option" data-theme-choice="light" aria-pressed="false" data-i18n="settings.themeLight">☀️ Light</button>
+          <button type="button" class="theme-option" data-theme-choice="dark" aria-pressed="false" data-i18n="settings.themeDark">🌙 Dark</button>
+          <button type="button" class="theme-option" data-theme-choice="system" aria-pressed="false" data-i18n="settings.themeSystem">💻 System</button>
+        </div>
+
+        <label for="language-select" class="settings-sublabel" data-i18n="settings.language">Language</label>
+        <select id="language-select" class="language-select" data-i18n-aria-label="settings.languageAria" aria-label="App language">
+          <option value="en">English</option>
+          <option value="ru">Русский</option>
+        </select>
+      </div>
+
+      <div class="settings-section">
+        <h2 class="sub-title" data-i18n="settings.account">Account</h2>
         <div class="settings-actions">
-          <button id="backup-btn" class="secondary-btn" type="button">⬇ Backup</button>
-          <button id="restore-btn" class="secondary-btn" type="button">⬆ Restore</button>
+          <button id="backup-btn" class="secondary-btn" type="button" data-i18n="settings.backup">⬇ Backup</button>
+          <button id="restore-btn" class="secondary-btn" type="button" data-i18n="settings.restore">⬆ Restore</button>
           <input id="restore-file-input" type="file" accept=".json,application/json" class="hidden">
-          <button id="change-password-btn" class="secondary-btn" type="button">🔑 Change password</button>
-          <button id="logout" class="secondary-btn danger-btn" type="button">Log out</button>
+          <button id="change-password-btn" class="secondary-btn" type="button" data-i18n="settings.changePassword">🔑 Change password</button>
+          <button id="logout" class="secondary-btn danger-btn" type="button" data-i18n="settings.logout">Log out</button>
         </div>
       </div>
 
       <div id="admin-settings-section" class="hidden">
-        <p class="hint">The section below is only visible to the server's designated admin account. Actions here affect other people's accounts and data — think before you click.</p>
+        <p class="hint" data-i18n="admin.hint">The section below is only visible to the server's designated admin account. Actions here affect other people's accounts and data — think before you click.</p>
 
         <div class="admin-section">
           <div class="admin-section-header">
-            <h2 class="sub-title">Chat history</h2>
+            <h2 class="sub-title" data-i18n="admin.chatHistory">Chat history</h2>
             <span id="admin-message-count" class="admin-count"></span>
           </div>
-          <button id="clear-chat-btn" class="secondary-btn danger-btn" type="button">Clear all chat history</button>
+          <button id="clear-chat-btn" class="secondary-btn danger-btn" type="button" data-i18n="admin.clearChat">Clear all chat history</button>
         </div>
 
         <div class="admin-section">
-          <h2 class="sub-title">Registered users</h2>
+          <h2 class="sub-title" data-i18n="admin.registeredUsers">Registered users</h2>
           <div id="admin-users" class="admin-users-list"></div>
         </div>
 
         <div class="admin-section">
-          <h2 class="sub-title">Activity log</h2>
+          <h2 class="sub-title" data-i18n="admin.activityLog">Activity log</h2>
           <div id="admin-activity" class="admin-activity-list"></div>
         </div>
       </div>
     </section>
   </main>
 
-  <nav class="bottom-nav" role="tablist" aria-label="Sections">
+  <nav class="bottom-nav" role="tablist" data-i18n-aria-label="nav.sectionsAria" aria-label="Sections">
     <button id="tab-vault" class="bottom-nav-item active" role="tab" aria-selected="true" aria-controls="vault-panel" type="button">
-      <span class="bottom-nav-icon">🔑</span><span class="bottom-nav-label">Vault</span>
+      <span class="bottom-nav-icon">🔑</span><span class="bottom-nav-label" data-i18n="nav.vault">Vault</span>
     </button>
     <button id="tab-budget" class="bottom-nav-item" role="tab" aria-selected="false" aria-controls="budget-panel" type="button">
-      <span class="bottom-nav-icon">💰</span><span class="bottom-nav-label">Budget</span>
+      <span class="bottom-nav-icon">💰</span><span class="bottom-nav-label" data-i18n="nav.budget">Budget</span>
     </button>
     <button id="tab-chat" class="bottom-nav-item" role="tab" aria-selected="false" aria-controls="chat-panel" type="button">
-      <span class="bottom-nav-icon">💬</span><span class="bottom-nav-label">Chat</span>
+      <span class="bottom-nav-icon">💬</span><span class="bottom-nav-label" data-i18n="nav.chat">Chat</span>
     </button>
     <button id="tab-more" class="bottom-nav-item" role="tab" aria-selected="false" aria-controls="more-panel" type="button">
-      <span class="bottom-nav-icon">⋯</span><span class="bottom-nav-label">More</span>
+      <span class="bottom-nav-icon">⋯</span><span class="bottom-nav-label" data-i18n="nav.more">More</span>
     </button>
   </nav>
 
   <dialog id="change-password-dialog" class="cp-dialog">
     <form id="change-password-form">
-      <h2>Change master password</h2>
-      <p class="hint">You'll need your current master password. Changing it re-encrypts your whole vault — make sure you'll remember the new one, since it still can't be recovered if lost.</p>
+      <h2 data-i18n="cp.title">Change master password</h2>
+      <p class="hint" data-i18n="cp.hint">You'll need your current master password. Changing it re-encrypts your whole vault — make sure you'll remember the new one, since it still can't be recovered if lost.</p>
 
-      <label for="cp-current">Current master password</label>
+      <label for="cp-current" data-i18n="cp.current">Current master password</label>
       <input id="cp-current" type="password" autocomplete="current-password" required>
 
-      <label for="cp-new">New master password</label>
+      <label for="cp-new" data-i18n="cp.new">New master password</label>
       <input id="cp-new" type="password" autocomplete="new-password" required>
       <div id="cp-strength" class="pw-strength hidden" aria-live="polite">
         <div class="pw-strength-bar"><div id="cp-strength-fill" class="pw-strength-fill"></div></div>
         <span id="cp-strength-label" class="pw-strength-label"></span>
       </div>
 
-      <label for="cp-confirm">Confirm new master password</label>
+      <label for="cp-confirm" data-i18n="cp.confirm">Confirm new master password</label>
       <input id="cp-confirm" type="password" autocomplete="new-password" required>
 
       <div id="cp-error" class="error" role="alert"></div>
 
       <div class="cp-actions">
-        <button type="button" id="cp-cancel" class="secondary-btn">Cancel</button>
-        <button type="submit" id="cp-submit" class="primary-btn">Change password</button>
+        <button type="button" id="cp-cancel" class="secondary-btn" data-i18n="common.cancel">Cancel</button>
+        <button type="submit" id="cp-submit" class="primary-btn" data-i18n="cp.submit">Change password</button>
       </div>
     </form>
   </dialog>
 
   <dialog id="restore-dialog" class="cp-dialog">
     <form id="restore-form">
-      <h2>Restore backup</h2>
-      <p class="hint">Restoring replaces everything currently in your vault (passwords and budget) with what's in this backup file. This can't be undone.</p>
+      <h2 data-i18n="restore.title">Restore backup</h2>
+      <p class="hint" data-i18n="restore.hint">Restoring replaces everything currently in your vault (passwords and budget) with what's in this backup file. This can't be undone.</p>
       <p id="restore-file-info" class="hint"></p>
 
-      <label for="restore-password">Master password for this backup</label>
+      <label for="restore-password" data-i18n="restore.passwordLabel">Master password for this backup</label>
       <input id="restore-password" type="password" autocomplete="off" required>
 
       <div id="restore-error" class="error" role="alert"></div>
 
       <div class="cp-actions">
-        <button type="button" id="restore-cancel" class="secondary-btn">Cancel</button>
-        <button type="submit" id="restore-submit" class="primary-btn">Restore and replace</button>
+        <button type="button" id="restore-cancel" class="secondary-btn" data-i18n="common.cancel">Cancel</button>
+        <button type="submit" id="restore-submit" class="primary-btn" data-i18n="restore.submit">Restore and replace</button>
       </div>
     </form>
   </dialog>
@@ -314,6 +343,7 @@
 
 <script src="js/crypto.js"></script>
 <script src="js/api.js"></script>
+<script src="js/i18n.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>
